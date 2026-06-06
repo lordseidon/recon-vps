@@ -1,0 +1,42 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5><i class="bi bi-ethernet me-2"></i>Open Ports</h5>
+    <div class="input-group input-group-sm w-auto">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" class="form-control form-control-sm" placeholder="Filter..." oninput="filterPorts(this.value)">
+    </div>
+</div>
+
+{% regroup ports|dictsort:"subdomain.name" by subdomain.name as port_groups %}
+{% if port_groups %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover table-sm" id="portsTable">
+        <thead>
+            <tr><th style="width:40%">Subdomain</th><th>Open Ports</th></tr>
+        </thead>
+        <tbody>
+            {% for group in port_groups %}
+            <tr>
+                <td class="subdomain-cell">{{ group.grouper }}</td>
+                <td>
+                    <div class="d-flex flex-wrap gap-1">
+                        {% for port in group.list %}
+                        <span class="badge port-badge">{{ port.port_number }}</span>
+                        {% endfor %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-center py-4 text-muted">No open ports found</div>
+{% endif %}
+
+<script>
+function filterPorts(query) {
+    document.querySelectorAll('#portsTable tbody tr').forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(query.toLowerCase()) ? '' : 'none';
+    });
+}
+</script>

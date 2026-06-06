@@ -1,0 +1,373 @@
+{% extends "scanner/base.html" %}
+
+{% block title %}Diff — {{ project.name }}{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Projects</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'project_detail' project.id %}">{{ project.name }}</a></li>
+        <li class="breadcrumb-item active">Diff</li>
+    </ol>
+</nav>
+
+<h3 class="fw-bold mb-4"><i class="bi bi-diff me-2"></i>Version Diff — {{ project.domain }}</h3>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label fw-semibold">Version A (older)</label>
+                <select name="scan_a" class="form-select">
+                    <option value="">Select version...</option>
+                    {% for s in scans %}
+                    <option value="{{ s.id }}" {% if scan_a and scan_a.id == s.id %}selected{% endif %}>
+                        v{{ s.version_label }} — {{ s.status }} ({{ s.subdomain_count }} subs)
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label fw-semibold">Version B (newer)</label>
+                <select name="scan_b" class="form-select">
+                    <option value="">Select version...</option>
+                    {% for s in scans %}
+                    <option value="{{ s.id }}" {% if scan_b and scan_b.id == s.id %}selected{% endif %}>
+                        v{{ s.version_label }} — {{ s.status }} ({{ s.subdomain_count }} subs)
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-accent w-100">
+                    <i class="bi bi-diff me-1"></i>Compare Versions
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if diff %}
+<div class="alert alert-info mb-4">
+    <i class="bi bi-info-circle me-2"></i>
+    Comparing <strong>v{{ scan_a.version_label }}</strong> ({{ scan_a.scan_date }}) &rarr;
+    <strong>v{{ scan_b.version_label }}</strong> ({{ scan_b.scan_date }})
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3 col-6">
+        <div class="card diff-stat">
+            <div class="card-body text-center">
+                <div class="text-muted small mb-1">Subdomains</div>
+                <span class="fs-4 fw-bold text-success">+{{ diff.summary.subdomains.added }}</span>
+                <span class="text-muted mx-1">/</span>
+                <span class="fs-4 fw-bold text-danger">-{{ diff.summary.subdomains.removed }}</span>
+                {% if diff.summary.subdomains.changed %}
+                <span class="text-muted mx-1">/</span>
+                <span class="fs-4 fw-bold text-warning">~{{ diff.summary.subdomains.changed }}</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card diff-stat">
+            <div class="card-body text-center">
+                <div class="text-muted small mb-1">Nuclei Findings</div>
+                <span class="fs-4 fw-bold text-danger">+{{ diff.summary.nuclei.added }}</span>
+                <span class="text-muted mx-1">/</span>
+                <span class="fs-4 fw-bold text-success">-{{ diff.summary.nuclei.removed }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card diff-stat">
+            <div class="card-body text-center">
+                <div class="text-muted small mb-1">API Endpoints</div>
+                <span class="fs-4 fw-bold text-success">+{{ diff.summary.endpoints.added }}</span>
+                <span class="text-muted mx-1">/</span>
+                <span class="fs-4 fw-bold text-danger">-{{ diff.summary.endpoints.removed }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card diff-stat">
+            <div class="card-body text-center">
+                <div class="text-muted small mb-1">Secrets</div>
+                <span class="fs-4 fw-bold text-warning">+{{ diff.summary.secrets.added }}</span>
+                <span class="text-muted mx-1">/</span>
+                <span class="fs-4 fw-bold text-success">-{{ diff.summary.secrets.removed }}</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mb-4" id="diffTabs">
+    <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#diff-subdomains">
+            <i class="bi bi-diagram-2 me-1"></i>Subdomains
+            <span class="badge bg-success ms-1">+{{ diff.summary.subdomains.added }}</span>
+            <span class="badge bg-danger ms-1">-{{ diff.summary.subdomains.removed }}</span>
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#diff-ports">
+            <i class="bi bi-ethernet me-1"></i>Ports
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#diff-nuclei">
+            <i class="bi bi-bug me-1"></i>Vulnerabilities
+            <span class="badge bg-danger ms-1">+{{ diff.summary.nuclei.added }}</span>
+            <span class="badge bg-success ms-1">-{{ diff.summary.nuclei.removed }}</span>
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#diff-endpoints">
+            <i class="bi bi-link-45deg me-1"></i>Endpoints
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#diff-secrets">
+            <i class="bi bi-key me-1"></i>Secrets
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#diff-takeover">
+            <i class="bi bi-exclamation-diamond me-1"></i>Takeover
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#diff-s3">
+            <i class="bi bi-cloud me-1"></i>S3
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#diff-xss">
+            <i class="bi bi-code-slash me-1"></i>XSS
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    {# Subdomains #}
+    <div class="tab-pane fade show active" id="diff-subdomains">
+        {% if diff.subdomains.added %}
+        <h6 class="text-success mb-2"><i class="bi bi-plus-circle me-1"></i>Added ({{ diff.subdomains.added|length }})</h6>
+        <div class="mb-3 diff-list">
+            {% for s in diff.subdomains.added %}
+            <span class="badge bg-success-subtle text-success-emphasis me-1 mb-1">{{ s }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% if diff.subdomains.removed %}
+        <h6 class="text-danger mb-2"><i class="bi bi-dash-circle me-1"></i>Removed ({{ diff.subdomains.removed|length }})</h6>
+        <div class="mb-3 diff-list">
+            {% for s in diff.subdomains.removed %}
+            <span class="badge bg-danger-subtle text-danger-emphasis me-1 mb-1">{{ s }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% if diff.subdomains.changed %}
+        <h6 class="text-warning mb-2"><i class="bi bi-arrow-repeat me-1"></i>Changed ({{ diff.subdomains.changed|length }})</h6>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead><tr><th>Subdomain</th><th>Field</th><th>Old</th><th>New</th></tr></thead>
+                <tbody>
+                    {% for item in diff.subdomains.changed %}
+                    {% for key, change in item.changes.items %}
+                    <tr>
+                        <td>{{ item.name }}</td>
+                        <td>{{ key }}</td>
+                        <td class="text-danger">{{ change.old }}</td>
+                        <td class="text-success">{{ change.new }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        {% if not diff.subdomains.added and not diff.subdomains.removed and not diff.subdomains.changed %}
+        <div class="text-center py-4 text-muted">No changes in subdomains</div>
+        {% endif %}
+    </div>
+
+    {# Ports #}
+    <div class="tab-pane fade" id="diff-ports">
+        {% if diff.ports.changed %}
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead><tr><th>Subdomain</th><th>Ports Added</th><th>Ports Removed</th></tr></thead>
+                <tbody>
+                    {% for item in diff.ports.changed %}
+                    <tr>
+                        <td>{{ item.subdomain }}</td>
+                        <td>
+                            {% for p in item.ports_added %}
+                            <span class="badge bg-success me-1">{{ p }}</span>
+                            {% empty %}<span class="text-muted">—</span>{% endfor %}
+                        </td>
+                        <td>
+                            {% for p in item.ports_removed %}
+                            <span class="badge bg-danger me-1">{{ p }}</span>
+                            {% empty %}<span class="text-muted">—</span>{% endfor %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-muted">No port changes</div>
+        {% endif %}
+    </div>
+
+    {# Nuclei #}
+    <div class="tab-pane fade" id="diff-nuclei">
+        {% if diff.nuclei.added_detailed %}
+        <h6 class="text-danger mb-2"><i class="bi bi-plus-circle me-1"></i>New Findings ({{ diff.nuclei.added_detailed|length }})</h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-sm">
+                <thead><tr><th>Severity</th><th>Template</th><th>URL</th></tr></thead>
+                <tbody>
+                    {% for f in diff.nuclei.added_detailed %}
+                    <tr>
+                        <td><span class="badge nuclear-badge severity-{{ f.severity|lower }}">{{ f.severity|upper }}</span></td>
+                        <td><code class="small">{{ f.template_id }}</code></td>
+                        <td class="small text-break">{{ f.matched_at }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        {% if diff.nuclei.removed_detailed %}
+        <h6 class="text-success mb-2"><i class="bi bi-check-circle me-1"></i>Fixed/Removed ({{ diff.nuclei.removed_detailed|length }})</h6>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead><tr><th>Severity</th><th>Template</th><th>URL</th></tr></thead>
+                <tbody>
+                    {% for f in diff.nuclei.removed_detailed %}
+                    <tr>
+                        <td><span class="badge nuclear-badge severity-{{ f.severity|lower }}">{{ f.severity|upper }}</span></td>
+                        <td><code class="small">{{ f.template_id }}</code></td>
+                        <td class="small text-break">{{ f.matched_at }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        {% if not diff.nuclei.added and not diff.nuclei.removed %}
+        <div class="text-center py-4 text-muted">No changes in findings</div>
+        {% endif %}
+    </div>
+
+    {# Endpoints #}
+    <div class="tab-pane fade" id="diff-endpoints">
+        {% if diff.endpoints.added %}
+        <h6 class="text-success mb-2"><i class="bi bi-plus-circle me-1"></i>New ({{ diff.endpoints.added|length }})</h6>
+        <div class="mb-3">
+            {% for ep in diff.endpoints.added %}
+            <div class="diff-line-added"><code>{{ ep }}</code></div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% if diff.endpoints.removed %}
+        <h6 class="text-danger mb-2"><i class="bi bi-dash-circle me-1"></i>Removed ({{ diff.endpoints.removed|length }})</h6>
+        <div class="mb-3">
+            {% for ep in diff.endpoints.removed %}
+            <div class="diff-line-removed"><code>{{ ep }}</code></div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% if not diff.endpoints.added and not diff.endpoints.removed %}
+        <div class="text-center py-4 text-muted">No changes in endpoints</div>
+        {% endif %}
+    </div>
+
+    {# Secrets #}
+    <div class="tab-pane fade" id="diff-secrets">
+        {% if diff.secrets.added %}
+        <h6 class="text-warning mb-2"><i class="bi bi-plus-circle me-1"></i>New Secrets ({{ diff.secrets.added|length }})</h6>
+        <div class="mb-3">
+            {% for s in diff.secrets.added %}
+            <div class="diff-line-added">{{ s }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% if diff.secrets.removed %}
+        <h6 class="text-success mb-2"><i class="bi bi-check-circle me-1"></i>Fixed/Removed ({{ diff.secrets.removed|length }})</h6>
+        <div class="mb-3">
+            {% for s in diff.secrets.removed %}
+            <div class="diff-line-removed">{{ s }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% if not diff.secrets.added and not diff.secrets.removed %}
+        <div class="text-center py-4 text-muted">No changes in secrets</div>
+        {% endif %}
+    </div>
+
+    {# Takeover #}
+    <div class="tab-pane fade" id="diff-takeover">
+        {% if diff.takeover.added %}
+        <h6 class="text-danger mb-2"><i class="bi bi-plus-circle me-1"></i>New Vulnerable ({{ diff.takeover.added|length }})</h6>
+        {% for s in diff.takeover.added %}
+        <div class="diff-line-added"><code>{{ s }}</code></div>
+        {% endfor %}
+        {% endif %}
+        {% if diff.takeover.removed %}
+        <h6 class="text-success mb-2"><i class="bi bi-check-circle me-1"></i>Fixed ({{ diff.takeover.removed|length }})</h6>
+        {% for s in diff.takeover.removed %}
+        <div class="diff-line-removed"><code>{{ s }}</code></div>
+        {% endfor %}
+        {% endif %}
+        {% if not diff.takeover.added and not diff.takeover.removed %}
+        <div class="text-center py-4 text-muted">No changes in takeover</div>
+        {% endif %}
+    </div>
+
+    {# S3 #}
+    <div class="tab-pane fade" id="diff-s3">
+        {% if diff.s3.added %}
+        <h6 class="text-danger mb-2">New Buckets ({{ diff.s3.added|length }})</h6>
+        {% for b in diff.s3.added %}<div class="diff-line-added"><code>{{ b }}</code></div>{% endfor %}
+        {% endif %}
+        {% if diff.s3.removed %}
+        <h6 class="text-success mb-2">Removed ({{ diff.s3.removed|length }})</h6>
+        {% for b in diff.s3.removed %}<div class="diff-line-removed"><code>{{ b }}</code></div>{% endfor %}
+        {% endif %}
+        {% if not diff.s3.added and not diff.s3.removed %}
+        <div class="text-center py-4 text-muted">No S3 changes</div>
+        {% endif %}
+    </div>
+
+    {# XSS #}
+    <div class="tab-pane fade" id="diff-xss">
+        {% if diff.xss.added %}
+        <h6 class="text-danger mb-2">New XSS ({{ diff.xss.added|length }})</h6>
+        {% for u in diff.xss.added %}<div class="diff-line-added"><code>{{ u }}</code></div>{% endfor %}
+        {% endif %}
+        {% if diff.xss.removed %}
+        <h6 class="text-success mb-2">Fixed ({{ diff.xss.removed|length }})</h6>
+        {% for u in diff.xss.removed %}<div class="diff-line-removed"><code>{{ u }}</code></div>{% endfor %}
+        {% endif %}
+        {% if not diff.xss.added and not diff.xss.removed %}
+        <div class="text-center py-4 text-muted">No XSS changes</div>
+        {% endif %}
+    </div>
+</div>
+{% elif scans.count == 0 %}
+<div class="empty-state">
+    <i class="bi bi-search display-1 text-muted mb-3 d-block"></i>
+    <h4 class="text-muted">No scans available</h4>
+    <p>Run at least two scans to compare versions.</p>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+    <i class="bi bi-arrow-left-right display-1 d-block mb-3"></i>
+    <p class="fs-5">Select two versions above to compare them</p>
+</div>
+{% endif %}
+{% endblock %}

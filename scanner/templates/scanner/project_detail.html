@@ -1,0 +1,148 @@
+{% extends "scanner/base.html" %}
+{% load humanize %}
+
+{% block title %}{{ project.name }} — ReconVue{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Projects</a></li>
+        <li class="breadcrumb-item active">{{ project.name }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-1">{{ project.name }}</h2>
+        <span class="text-muted"><i class="bi bi-globe me-1"></i>{{ project.domain }}</span>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'diff_scans' project.id %}" class="btn btn-outline-info">
+            <i class="bi bi-diff me-1"></i>Diff Versions
+        </a>
+        <form method="POST" action="{% url 'start_scan' project.id %}" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-accent">
+                <i class="bi bi-play-fill me-1"></i>Start Scan
+            </button>
+        </form>
+        <button class="btn btn-outline-warning btn-sm" id="testDnsBtn" onclick="testDns()">
+            <i class="bi bi-lightning me-1"></i>Test DNS
+        </button>
+        <form method="POST" action="{% url 'delete_project' project.id %}" style="display:inline;" onsubmit="return confirm('Delete this project and ALL its scans, subs, ports, and findings?')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-trash me-1"></i>Delete
+            </button>
+        </form>
+    </div>
+</div>
+
+{% if project.notes %}
+<div class="alert alert-secondary mb-4">{{ project.notes }}</div>
+{% endif %}
+
+{% if scans %}
+<div class="row g-4">
+    {% for scan in scans %}
+    <div class="col-xl-4 col-lg-6 col-md-6">
+        <a href="{% url 'scan_detail' scan.id %}" class="text-decoration-none">
+            <div class="card scan-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span class="fw-bold">
+                        <i class="bi bi-calendar3 me-1"></i>{{ scan.version_label }}
+                    </span>
+                    <span class="badge {% if scan.status == 'completed' %}bg-success{% elif scan.status == 'running' %}bg-warning{% elif scan.status == 'failed' %}bg-danger{% else %}bg-secondary{% endif %}">
+                        {{ scan.status }}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <div class="metric">
+                                <div class="metric-value">{{ scan.subdomain_count }}</div>
+                                <div class="metric-label">Subdomains</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="metric">
+                                <div class="metric-value text-success">{{ scan.live_count }}</div>
+                                <div class="metric-label">Live</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="metric">
+                                <div class="metric-value">{{ scan.port_count }}</div>
+                                <div class="metric-label">Ports</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="metric">
+                                <div class="metric-value {% if scan.nuclei_finding_count > 0 %}text-danger{% endif %}">{{ scan.nuclei_finding_count }}</div>
+                                <div class="metric-label">Findings</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="metric">
+                                <div class="metric-value {% if scan.secret_count > 0 %}text-warning{% endif %}">{{ scan.secret_count }}</div>
+                                <div class="metric-label">Secrets</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="metric">
+                                <div class="metric-value">{{ scan.api_endpoint_count }}</div>
+                                <div class="metric-label">APIs</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer small text-muted">
+                    <i class="bi bi-clock me-1"></i>{{ scan.created_at|date:"H:i d M Y" }}
+                    {% if scan.completed_at %}
+                    &middot; took {{ scan.completed_at|timeuntil:scan.created_at }}
+                    {% endif %}
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <i class="bi bi-search display-1 text-muted mb-3 d-block"></i>
+    <h4 class="text-muted">No scans yet</h4>
+    <p class="text-muted">Start your first recon scan for {{ project.domain }}</p>
+    <form method="POST" action="{% url 'start_scan' project.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-accent btn-lg">
+            <i class="bi bi-play-fill me-2"></i>Start Scan
+        </button>
+    </form>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function testDns() {
+    const btn = document.getElementById('testDnsBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Testing...';
+    
+    const resp = await fetch("{% url 'test_dns' project.id %}", {
+        method: 'POST',
+        headers: {'X-CSRFToken': getCookie('csrftoken')},
+    });
+    const data = await resp.json();
+    
+    if (data.success) {
+        alert('DNS works! Found ' + data.found + ' subdomains:\n' + (data.subdomains||[]).join('\n'));
+    } else {
+        alert('DNS test FAILED:\n' + (data.error || data.stderr || 'Unknown error'));
+    }
+    
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-lightning me-1"></i>Test DNS';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,23 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5><i class="bi bi-code-slash me-2"></i>XSS Findings ({{ findings.count }})</h5>
+</div>
+{% if findings %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover table-sm">
+        <thead><tr><th>URL</th><th>PoC</th></tr></thead>
+        <tbody>
+            {% for f in findings %}
+            <tr>
+                <td class="text-break"><code class="small">{{ f.url }}</code></td>
+                <td><pre class="mb-0 small" style="max-height:100px; overflow:auto;">{{ f.poc }}</pre></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-center py-4 text-muted">
+    <i class="bi bi-shield-check display-4 d-block mb-2"></i>
+    No XSS vulnerabilities found
+</div>
+{% endif %}

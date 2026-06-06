@@ -1,0 +1,67 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5><i class="bi bi-link-45deg me-2"></i>Crawled URLs — Grouped by Subdomain</h5>
+    <div class="d-flex gap-2 align-items-center">
+        <select class="form-select form-select-sm w-auto" onchange="filterEndpoints(this.value)">
+            <option value="all">All URLs</option>
+            <option value="api">API Endpoints Only</option>
+            <option value="js">JS Files Only</option>
+        </select>
+        <span class="badge bg-secondary" id="endpointTotal">
+            {{ scan.crawled_urls.count }} total
+        </span>
+    </div>
+</div>
+
+{% regroup scan.crawled_urls.all|dictsort:"subdomain" by subdomain as url_groups %}
+{% if url_groups %}
+<div class="accordion" id="urlsAccordion">
+    {% for group in url_groups %}
+    <div class="accordion-item url-group" data-subdomain="{{ group.grouper }}">
+        <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#url-{{ forloop.counter }}">
+                <span class="subdomain-cell me-2">{{ group.grouper }}</span>
+                <span class="badge bg-secondary url-count-all ms-2">{{ group.list|length }} URLs</span>
+            </button>
+        </h2>
+        <div id="url-{{ forloop.counter }}" class="accordion-collapse collapse" data-bs-parent="#urlsAccordion">
+            <div class="accordion-body p-0">
+                <table class="table table-sm mb-0 url-table">
+                    <tbody>
+                        {% for u in group.list %}
+                        <tr class="url-row" data-is-api="{% if u.is_api %}1{% else %}0{% endif %}" data-is-js="{% if u.is_js %}1{% else %}0{% endif %}">
+                            <td class="text-break">
+                                <code class="small">{{ u.url }}</code>
+                            </td>
+                            <td class="text-end" style="width:1%; white-space:nowrap;">
+                                {% if u.is_js %}<span class="badge bg-info-subtle text-info-emphasis small me-1">JS</span>{% endif %}
+                                {% if u.is_api %}<span class="badge bg-warning-subtle text-warning-emphasis small">API</span>{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-4 text-muted">No crawled URLs found</div>
+{% endif %}
+
+<script>
+function filterEndpoints(filter) {
+    document.querySelectorAll('.accordion-item.url-group').forEach(group => {
+        let visibleRows = 0;
+        group.querySelectorAll('.url-row').forEach(row => {
+            let show = true;
+            if (filter === 'api' && row.dataset.isApi !== '1') show = false;
+            if (filter === 'js' && row.dataset.isJs !== '1') show = false;
+            row.style.display = show ? '' : 'none';
+            if (show) visibleRows++;
+        });
+        group.style.display = visibleRows > 0 ? '' : 'none';
+    });
+}
+</script>

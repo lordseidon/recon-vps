@@ -1,0 +1,184 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ js_file.subdomain }} — {{ js_url_name }}</title>
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/editor/editor.main.css">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { background:#0d1117; color:#c9d1d1; font-family:'Segoe UI',sans-serif; overflow:hidden; height:100vh; display:flex; flex-direction:column; }
+        .toolbar {
+            display:flex; align-items:center; justify-content:space-between;
+            padding:6px 16px; background:#161b22; border-bottom:1px solid #30363d;
+            flex-shrink:0;
+        }
+        .toolbar-left { display:flex; align-items:center; gap:12px; }
+        .toolbar-right { display:flex; align-items:center; gap:8px; }
+        .filename { font-family:'JetBrains Mono',monospace; font-size:13px; color:#c9d1d1; }
+        .subdomain { font-size:11px; color:#8b949e; }
+        .toolbar a { color:#58a6ff; text-decoration:none; font-size:12px; }
+        .toolbar a:hover { text-decoration:underline; }
+        .btn-sm {
+            background:#21262d; border:1px solid #30363d; color:#c9d1d1;
+            padding:4px 10px; border-radius:6px; font-size:12px; cursor:pointer;
+        }
+        .btn-sm:hover { background:#30363d; }
+        .btn-sm.active { background:#1f6feb; border-color:#1f6feb; color:#fff; }
+        .kw-badge { font-size:10px; padding:1px 6px; border-radius:4px; font-weight:600; }
+        .kw-sink { background:#ef444433; color:#ef4444; border:1px solid #ef444455; }
+        .kw-source { background:#10b98133; color:#10b981; border:1px solid #10b98155; }
+        .kw-both { background:#f59e0b33; color:#f59e0b; border:1px solid #f59e0b55; }
+        #editor { flex:1; min-height:0; }
+        .kw-panel {
+            background:#161b22; border-top:1px solid #30363d; padding:6px 16px;
+            display:flex; align-items:center; gap:6px; flex-wrap:wrap; flex-shrink:0;
+            max-height:100px; overflow-y:auto;
+        }
+        .kw-panel-title { font-size:10px; color:#8b949e; text-transform:uppercase; letter-spacing:0.5px; margin-right:4px; white-space:nowrap; }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <span class="filename">{{ js_url_name }}</span>
+            <span class="subdomain">{{ js_file.subdomain }}</span>
+        </div>
+        <div class="toolbar-right">
+            <a href="{{ js_file.url }}" target="_blank" class="btn-sm">
+                <i class="bi bi-box-arrow-up-right"></i> Open URL
+            </a>
+            <button class="btn-sm" onclick="togglePretty()" id="prettyBtn">Pretty Print</button>
+            <button class="btn-sm active" onclick="toggleHighlights()" id="kwBtn">Keywords: ON</button>
+            <a href="javascript:history.back()" class="btn-sm">← Back</a>
+        </div>
+    </div>
+    <div id="editor"></div>
+    <div class="kw-panel" id="kwPanel">
+        <span class="kw-panel-title">Keywords detected:</span>
+        {% for kw in keywords %}
+        <span class="kw-badge kw-{{ kw.category }}">{{ kw.keyword }}</span>
+        {% endfor %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script>
+    const rawCode = {{ js_content_json|safe }};
+    const keywords = {{ keywords_json|safe }};
+    let prettyCode = rawCode;
+    let highlightsOn = true;
+
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' }});
+    require(['vs/editor/editor.main'], function() {
+        monaco.editor.defineTheme('github-dark', {
+            base: 'vs-dark',
+            inherit: true,
+            rules: [
+                { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },
+                { token: 'keyword', foreground: 'ff7b72' },
+                { token: 'string', foreground: 'a5d6ff' },
+                { token: 'number', foreground: '79c0ff' },
+                { token: 'regexp', foreground: 'a5d6ff' },
+                { token: 'type', foreground: 'ffa657' },
+                { token: 'function', foreground: 'd2a8ff' },
+                { token: 'variable', foreground: 'ffa657' },
+                { token: 'delimiter', foreground: 'c9d1d1' },
+            ],
+            colors: {
+                'editor.background': '#0d1117',
+                'editor.foreground': '#c9d1d1',
+                'editor.lineHighlightBackground': '#161b22',
+                'editor.selectionBackground': '#264f78',
+                'editorCursor.foreground': '#58a6ff',
+                'editorLineNumber.foreground': '#484f58',
+                'editorLineNumber.activeForeground': '#c9d1d1',
+            }
+        });
+
+        window.editor = monaco.editor.create(document.getElementById('editor'), {
+            value: rawCode,
+            language: 'javascript',
+            theme: 'github-dark',
+            readOnly: true,
+            fontSize: 13,
+            lineNumbers: 'on',
+            minimap: { enabled: true, scale: 1, showSlider: 'mouseover' },
+            scrollBeyondLastLine: false,
+            wordWrap: 'on',
+            automaticLayout: true,
+            padding: { top: 8 },
+            renderLineHighlight: 'line',
+            bracketPairColorization: { enabled: true },
+        });
+
+        window.raw = rawCode;
+        applyKeywordDecorations();
+    });
+
+    function togglePretty() {
+        const btn = document.getElementById('prettyBtn');
+        if (btn.classList.contains('active')) {
+            editor.setValue(window.raw);
+            btn.classList.remove('active');
+            btn.textContent = 'Pretty Print';
+        } else {
+            try {
+                const pretty = js_beautify(window.raw, { indent_size: 2, space_in_empty_paren: true });
+                editor.setValue(pretty);
+                btn.classList.add('active');
+                btn.textContent = 'Original';
+                if (highlightsOn) applyKeywordDecorations();
+            } catch(e) {
+                alert('Could not pretty-print: ' + e.message);
+            }
+        }
+    }
+
+    function toggleHighlights() {
+        highlightsOn = !highlightsOn;
+        const btn = document.getElementById('kwBtn');
+        btn.textContent = 'Keywords: ' + (highlightsOn ? 'ON' : 'OFF');
+        btn.classList.toggle('active', highlightsOn);
+        if (highlightsOn) applyKeywordDecorations();
+        else editor.deltaDecorations(window._kwDecorations || [], []);
+    }
+
+    function applyKeywordDecorations() {
+        if (!highlightsOn || !keywords.length) return;
+        const model = editor.getModel();
+        const text = model.getValue();
+        const decorations = [];
+        const existing = window._kwDecorations || [];
+
+        keywords.forEach(kw => {
+            const escaped = kw.keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const re = new RegExp(escaped, 'gi');
+            let match;
+            while ((match = re.exec(text)) !== null) {
+                const color = kw.category === 'sink' ? '#ef4444' : kw.category === 'source' ? '#10b981' : '#f59e0b';
+                decorations.push({
+                    range: new monaco.Range(
+                        model.getPositionAt(match.index).lineNumber,
+                        model.getPositionAt(match.index).column,
+                        model.getPositionAt(match.index + match[0].length).lineNumber,
+                        model.getPositionAt(match.index + match[0].length).column,
+                    ),
+                    options: {
+                        inlineClassName: 'kw-' + kw.category + '-hl',
+                        hoverMessage: { value: `**[${kw.category}]** \`${kw.keyword}\`` },
+                    },
+                });
+            }
+        });
+
+        if (existing.length) editor.deltaDecorations(existing, []);
+        window._kwDecorations = editor.deltaDecorations(existing, decorations);
+    }
+    </script>
+    <script>
+    // Inline js-beautify (bundled so no extra request)
+    var js_beautify=function(){"use strict";function e(e){return null==e}function t(e,t,n){var r;if("string"!=typeof t){if("object"==typeof t&&t.constructor===RegExp)return t;if(!0===t)return t=""}return n&&(r=n(e)),""!==t||e===t||r?"string"!=typeof t&&(e===t?t="":t=""):t=""+e}return{js:function(e,t){return function(e,t){if(!e)return"";var n="";e=e.toString();var r=[],i=!1,o=0,a=function(e,t,n,o){for(var a,s,c=e;c;){var l=r[r.length-1];if(e===o&&" "===r[0]&&0===r.length)return[];if(1===r.length&&Array.isArray(r[0]))return r[0];switch(c){case"\n":r=[],i=!1,a=void 0;break;case" ":case"\t":case"\r":case"\f":if(!i)break;case"{":case"(":" "===r[r.length-1]&&r.pop();break;case".":r=[];break;case"}":r=[]}}{var s=r.indexOf("");-1!==s&&(r.splice(s,1)," "===r[r.length-1]&&r.pop())}return r}(e)}}}}();
+    </script>
+</body>
+</html>

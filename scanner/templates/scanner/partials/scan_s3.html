@@ -1,0 +1,26 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5><i class="bi bi-cloud me-2"></i>S3 Buckets ({{ buckets.count }})</h5>
+</div>
+{% if buckets %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover table-sm">
+        <thead><tr><th>Bucket Name</th><th>Status</th></tr></thead>
+        <tbody>
+            {% for b in buckets %}
+            <tr>
+                <td><code>{{ b.bucket_name }}</code></td>
+                <td>
+                    {% if b.is_open %}
+                    <span class="badge bg-danger">OPEN</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Closed</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-center py-4 text-muted">No S3 buckets found</div>
+{% endif %}

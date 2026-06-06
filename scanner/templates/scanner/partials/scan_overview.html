@@ -1,0 +1,162 @@
+<div class="row g-4 mb-4">
+    <div class="col-md-3 col-6">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <div class="stat-icon text-primary"><i class="bi bi-diagram-2-fill"></i></div>
+                <div class="stat-num">{{ scan.subdomain_count }}</div>
+                <div class="stat-lbl">Subdomains</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <div class="stat-icon text-success"><i class="bi bi-check-circle-fill"></i></div>
+                <div class="stat-num">{{ scan.live_count }}</div>
+                <div class="stat-lbl">Live Hosts</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <div class="stat-icon text-info"><i class="bi bi-ethernet"></i></div>
+                <div class="stat-num">{{ scan.port_count }}</div>
+                <div class="stat-lbl">Open Ports</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <div class="stat-icon {% if scan.nuclei_finding_count > 0 %}text-danger{% else %}text-muted{% endif %}">
+                    <i class="bi bi-bug-fill"></i>
+                </div>
+                <div class="stat-num">{{ scan.nuclei_finding_count }}</div>
+                <div class="stat-lbl">Vulnerabilities</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <div class="stat-icon {% if scan.secret_count > 0 %}text-warning{% else %}text-muted{% endif %}">
+                    <i class="bi bi-key-fill"></i>
+                </div>
+                <div class="stat-num">{{ scan.secret_count }}</div>
+                <div class="stat-lbl">Secrets</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <div class="stat-icon text-purple"><i class="bi bi-link-45deg"></i></div>
+                <div class="stat-num">{{ scan.api_endpoint_count }}</div>
+                <div class="stat-lbl">API Endpoints</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <div class="stat-icon {% if scan.takeover_count > 0 %}text-danger{% else %}text-muted{% endif %}">
+                    <i class="bi bi-exclamation-diamond-fill"></i>
+                </div>
+                <div class="stat-num">{{ scan.takeover_count }}</div>
+                <div class="stat-lbl">Takeovers</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <div class="stat-icon text-orange"><i class="bi bi-cloud-fill"></i></div>
+                <div class="stat-num">{{ scan.s3_bucket_count }}</div>
+                <div class="stat-lbl">S3 Buckets</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if subdomains %}
+<h5 class="mb-3"><i class="bi bi-diagram-2 me-1"></i>Live Subdomains (showing first 20)</h5>
+<div class="table-responsive">
+    <table class="table table-striped table-hover table-sm">
+        <thead>
+            <tr>
+                <th>Subdomain</th>
+                <th>IP</th>
+                <th>Status</th>
+                <th>Title</th>
+                <th>Technologies</th>
+                <th>Ports</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for sub in subdomains %}
+            <tr>
+                <td class="subdomain-cell">
+                    <a href="{{ sub.http_url }}" target="_blank" class="text-decoration-none">{{ sub.name }}</a>
+                </td>
+                <td><code>{{ sub.ip }}</code></td>
+                <td>
+                    {% if sub.http_status %}
+                    <span class="badge {% if sub.http_status < 300 %}bg-success{% elif sub.http_status < 400 %}bg-info{% elif sub.http_status < 500 %}bg-warning{% else %}bg-danger{% endif %}">
+                        {{ sub.http_status }}
+                    </span>
+                    {% else %}
+                    <span class="badge bg-secondary">N/A</span>
+                    {% endif %}
+                </td>
+                <td class="small">{{ sub.http_title|truncatechars:60 }}</td>
+                <td>
+                    {% for tech in sub.technologies %}
+                    <span class="badge tech-badge bg-secondary-subtle text-secondary-emphasis me-1">{{ tech }}</span>
+                    {% empty %}
+                    <span class="text-muted">—</span>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for port in sub.ports.all %}
+                    <span class="badge bg-dark me-1">{{ port.port_number }}</span>
+                    {% empty %}
+                    <span class="text-muted">—</span>
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if findings %}
+<h5 class="mb-3 mt-4"><i class="bi bi-bug me-1"></i>Latest Findings</h5>
+<div class="table-responsive">
+    <table class="table table-striped table-hover table-sm">
+        <thead>
+            <tr>
+                <th>Severity</th>
+                <th>Template</th>
+                <th>Host</th>
+                <th>Matched At</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in findings %}
+            <tr>
+                <td>
+                    <span class="badge nuclear-badge severity-{{ f.severity|lower }}">
+                        {{ f.severity|upper }}
+                    </span>
+                </td>
+                <td class="small">{{ f.template_id }}</td>
+                <td>{{ f.host }}</td>
+                <td class="small text-break">{{ f.matched_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}

@@ -1,0 +1,40 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5><i class="bi bi-bug me-2"></i>Nuclei Findings ({{ findings.count }})</h5>
+</div>
+{% if findings %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover table-sm">
+        <thead>
+            <tr>
+                <th>Severity</th>
+                <th>Template</th>
+                <th>Name</th>
+                <th>Host</th>
+                <th>Matched At</th>
+                <th>Results</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in findings %}
+            <tr>
+                <td>
+                    <span class="badge nuclear-badge severity-{{ f.severity|lower }}">
+                        {{ f.severity|upper }}
+                    </span>
+                </td>
+                <td class="small"><code>{{ f.template_id }}</code></td>
+                <td class="small">{{ f.name }}</td>
+                <td>{{ f.host|default:"—" }}</td>
+                <td class="small text-break">{{ f.matched_at }}</td>
+                <td class="small"><pre class="mb-0" style="max-width:300px; max-height:60px; overflow:auto; font-size:0.75rem;">{{ f.extracted_results|truncatechars:200 }}</pre></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-center py-4 text-muted">
+    <i class="bi bi-check-circle display-4 d-block mb-2"></i>
+    No vulnerabilities found
+</div>
+{% endif %}

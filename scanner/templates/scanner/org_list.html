@@ -1,0 +1,93 @@
+{% extends "scanner/base.html" %}
+{% load humanize %}
+
+{% block title %}Organisations — ReconVue{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="fw-bold mb-0"><i class="bi bi-building me-2"></i>Organisations</h2>
+    <button class="btn btn-accent" data-bs-toggle="modal" data-bs-target="#newOrgModal">
+        <i class="bi bi-plus-lg me-1"></i>New Organisation
+    </button>
+</div>
+
+{% if orgs %}
+<div class="row g-4">
+    {% for org in orgs %}
+    <div class="col-xl-4 col-lg-6">
+        <a href="{% url 'org_detail' org.id %}" class="text-decoration-none">
+            <div class="card project-card h-100">
+                <div class="card-body d-flex flex-column">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <h5 class="card-title mb-1">{{ org.name }}</h5>
+                        <span class="badge bg-secondary-subtle text-secondary-emphasis">
+                            {{ org.project_count }} domains
+                        </span>
+                    </div>
+                    <div class="row g-2 small mb-3">
+                        <div class="col-4">
+                            <div class="stat-badge">
+                                <span class="stat-label">CIDRs</span>
+                                <span class="stat-value">{{ org.asn_cidr_count }}</span>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-badge">
+                                <span class="stat-label">IPs</span>
+                                <span class="stat-value">{{ org.asn_ip_count }}</span>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-badge">
+                                <span class="stat-label">Discovery</span>
+                                <span class="stat-value text-info">{{ org.asn_domain_count }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-auto d-flex justify-content-between align-items-center">
+                        <span class="text-muted small">{{ org.created_at|date:"d M Y" }}</span>
+                        <span class="badge {% if org.asn_status == 'completed' %}bg-success{% elif org.asn_status == 'running' %}bg-warning{% else %}bg-secondary{% endif %}">
+                            {{ org.asn_status }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <i class="bi bi-building display-1 text-muted mb-3 d-block"></i>
+    <h4 class="text-muted">No organisations yet</h4>
+    <p class="text-muted">Add an organisation to start ASN-level recon.</p>
+    <button class="btn btn-accent" data-bs-toggle="modal" data-bs-target="#newOrgModal">
+        <i class="bi bi-plus-lg me-1"></i>Create Organisation
+    </button>
+</div>
+{% endif %}
+
+<div class="modal fade" id="newOrgModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">New Organisation</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Organisation Name</label>
+                        <input type="text" name="name" class="form-control" placeholder="MTN Nigeria" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-accent">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

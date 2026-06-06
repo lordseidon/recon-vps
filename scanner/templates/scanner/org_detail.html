@@ -1,0 +1,272 @@
+{% extends "scanner/base.html" %}
+{% load humanize %}
+
+{% block title %}{{ org.name }} — ReconVue{% endblock %}
+
+{% block extra_head %}
+<style>
+.log-feed { font-family: 'JetBrains Mono', monospace; }
+.log-line:hover { background: rgba(255,255,255,0.03); }
+.cat-step { color: #58a6ff !important; }
+.cat-success { color: #3fb950 !important; }
+.cat-error { color: #f85149 !important; }
+.cat-warn { color: #d2991d !important; }
+.cat-output { color: #8b949e !important; }
+.cat-finding { color: #f0883e !important; font-weight: 600; }
+.cat-subdomain { color: #a5d6ff !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'org_list' %}">Organisations</a></li>
+        <li class="breadcrumb-item active">{{ org.name }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold mb-1"><i class="bi bi-building me-2"></i>{{ org.name }}</h3>
+        <span class="text-muted" id="org-stats">
+            {{ projects.count }} domains &middot; {{ org.asn_cidr_count }} CIDRs &middot; {{ org.asn_ip_count }} IPs
+        </span>
+    </div>
+    <div class="d-flex gap-2">
+        <form method="POST" action="{% url 'org_start_asn' org.id %}" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-warning"
+                    {% if org.asn_status == 'running' %}disabled{% endif %}>
+                <i class="bi bi-search me-1"></i>
+                {% if org.asn_status == 'running' %}ASN Running...{% else %}Run ASN Discovery{% endif %}
+            </button>
+        </form>
+        <button class="btn btn-accent" data-bs-toggle="modal" data-bs-target="#addDomainModal">
+            <i class="bi bi-plus-lg me-1"></i>Add Domain
+        </button>
+        <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteOrgModal">
+            <i class="bi bi-trash me-1"></i>Delete
+        </button>
+    </div>
+</div>
+
+{% if org.asn_status == 'running' %}
+<div class="alert alert-warning mb-4">
+    <div class="d-flex align-items-center">
+        <div class="spinner-border spinner-border-sm me-2"></div>
+        <strong>ASN discovery in progress...</strong>
+        <span class="ms-2 small" id="asn-progress">
+            CIDRs: {{ org.asn_cidr_count }} | IPs: {{ org.asn_ip_count }} | Domains: {{ org.asn_domain_count }}
+        </span>
+    </div>
+</div>
+
+<div class="log-feed mb-4" id="asnLogFeed" style="background:#0d1117; border:1px solid var(--border-color); border-radius:8px; max-height:400px; overflow-y:auto; padding:8px 0; font-family:'JetBrains Mono',monospace; font-size:0.78rem;">
+    <div class="log-line" style="padding:2px 16px; color:#8b949e;">Waiting for scan output...</div>
+</div>
+
+<script>
+let asnLastId = 0;
+const logFeed = document.getElementById('asnLogFeed');
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+setInterval(async () => {
+    const resp = await fetch(`/org/{{ org.id }}/live/feed/?since=${asnLastId}`);
+    const data = await resp.json();
+    document.getElementById('asn-progress').textContent =
+        `CIDRs: ${data.cidr_count} | IPs: ${data.ip_count} | Domains: ${data.domain_count}`;
+    document.getElementById('org-stats').innerHTML =
+        `{{ projects.count }} domains &middot; ${data.cidr_count} CIDRs &middot; ${data.ip_count} IPs`;
+    for (const l of data.logs) {
+        const div = document.createElement('div');
+        const catClass = 'cat-' + l.category;
+        div.className = 'log-line';
+        div.style.cssText = 'padding:1px 16px;display:flex;gap:8px;';
+        div.innerHTML = `<span style="color:#f0883e;min-width:50px;font-size:0.65rem;font-weight:600;">${l.category.toUpperCase()}</span>` +
+            `<span style="color:#c9d1d1;word-break:break-all;">${escapeHtml(l.message)}</span>`;
+        logFeed.appendChild(div);
+        asnLastId = Math.max(asnLastId, l.id);
+    }
+    logFeed.scrollTop = logFeed.scrollHeight;
+    if (data.status === 'completed' || data.status === 'failed') {
+        setTimeout(() => location.reload(), 2000);
+    }
+}, 1500);
+</script>
+{% endif %}
+
+{% if discovered_domains %}
+<div class="card mb-4 border-info">
+    <div class="card-header d-flex justify-content-between align-items-center bg-info-subtle">
+        <span><i class="bi bi-globe me-2"></i>Discovered Domains ({{ discovered_domains|length }})</span>
+        <form method="POST" action="{% url 'org_import_discovered' org.id %}" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-info">
+                <i class="bi bi-box-arrow-in-down me-1"></i>Import All as Projects
+            </button>
+        </form>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <tbody>
+                {% for d in discovered_domains %}
+                <tr>
+                    <td><code>{{ d }}</code></td>
+                    <td class="text-end">
+                        <form method="POST" action="{% url 'org_add_domain' org.id %}" style="display:inline;">
+                            {% csrf_token %}
+                            <input type="hidden" name="domain" value="{{ d }}">
+                            <button type="submit" class="btn btn-sm btn-outline-success">
+                                <i class="bi bi-plus me-1"></i>Add
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<h5 class="mb-3"><i class="bi bi-folder2 me-2"></i>Projects</h5>
+
+{% if projects %}
+<div class="row g-4">
+    {% for project in projects %}
+    <div class="col-xl-4 col-lg-6">
+        <a href="{% url 'project_detail' project.id %}" class="text-decoration-none">
+            <div class="card project-card h-100">
+                <div class="card-body d-flex flex-column">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <h6 class="card-title mb-1">{{ project.name }}</h6>
+                            <code class="small text-muted">{{ project.domain }}</code>
+                        </div>
+                        <span class="badge bg-secondary-subtle text-secondary-emphasis fs-6">
+                            v{{ project.scan_count }}
+                        </span>
+                    </div>
+                    {% with latest=project.latest_scan %}
+                    <div class="mb-2">
+                        {% if latest %}
+                        <div class="row g-1 small">
+                            <div class="col-6"><span class="text-muted">Subs:</span> {{ latest.subdomain_count }}</div>
+                            <div class="col-6"><span class="text-muted">Live:</span> <span class="text-success">{{ latest.live_count }}</span></div>
+                            <div class="col-6"><span class="text-muted">Ports:</span> {{ latest.port_count }}</div>
+                            <div class="col-6"><span class="text-muted">Findings:</span> <span class="{% if latest.nuclei_finding_count > 0 %}text-danger{% endif %}">{{ latest.nuclei_finding_count }}</span></div>
+                        </div>
+                        {% else %}
+                        <p class="text-muted small mb-0">No scans yet</p>
+                        {% endif %}
+                    </div>
+                    {% endwith %}
+                    <div class="mt-auto d-flex gap-2">
+                        <a href="{% url 'project_detail' project.id %}" class="btn btn-sm btn-outline-light flex-grow-1">Open</a>
+                        <a href="{% url 'diff_scans' project.id %}" class="btn btn-sm btn-outline-info flex-grow-1">Diff</a>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-4 text-muted">
+    <i class="bi bi-folder2-open display-4 d-block mb-2"></i>
+    No domains yet. Run ASN discovery or add manually.
+</div>
+{% endif %}
+
+{% if cidrs %}
+<h5 class="mt-4 mb-3"><i class="bi bi-diagram-3 me-2"></i>CIDR Ranges & Discovered IPs</h5>
+<div class="accordion" id="cidrAccordion">
+    {% for c in cidrs %}
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#cidr-{{ forloop.counter }}">
+                <code class="me-2">{{ c.cidr }}</code>
+                <span class="badge bg-info ms-2">{{ c.open_ips|length }} IPs</span>
+                {% if c.discovered_domains %}<span class="badge bg-success ms-1">{{ c.discovered_domains|length }} domains</span>{% endif %}
+            </button>
+        </h2>
+        <div id="cidr-{{ forloop.counter }}" class="accordion-collapse collapse" data-bs-parent="#cidrAccordion">
+            <div class="accordion-body p-0">
+                {% if c.open_ips %}
+                <div class="p-3">
+                    <div class="d-flex flex-wrap gap-1">
+                        {% for ip in c.open_ips %}
+                        <code class="badge bg-dark-subtle text-light px-2 py-1" style="font-size:0.8rem;">{{ ip }}</code>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% else %}
+                <div class="p-3 text-muted small">No IPs scanned yet</div>
+                {% endif %}
+                {% if c.discovered_domains %}
+                <div class="border-top p-3">
+                    <small class="text-muted d-block mb-2">Discovered domains:</small>
+                    {% for d in c.discovered_domains %}
+                    <code class="d-block small">{{ d }}</code>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="modal fade" id="addDomainModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{% url 'org_add_domain' org.id %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Domain</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Domain</label>
+                        <input type="text" name="domain" class="form-control" placeholder="mtn.ng" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-accent">Add</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="deleteOrgModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{% url 'org_delete' org.id %}">
+                {% csrf_token %}
+                <div class="modal-header bg-danger-subtle">
+                    <h5 class="modal-title text-danger"><i class="bi bi-exclamation-triangle me-2"></i>Delete Organisation</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete <strong>{{ org.name }}</strong>?</p>
+                    <p class="text-danger small mb-0">This will remove all projects, scans, findings, and data under this organisation. This action cannot be undone.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Delete Forever</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

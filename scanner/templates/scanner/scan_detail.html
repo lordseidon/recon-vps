@@ -1,0 +1,160 @@
+{% extends "scanner/base.html" %}
+{% load humanize %}
+
+{% block title %}{{ scan.project.domain }} — v{{ scan.version_label }}{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Projects</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'project_detail' scan.project.id %}">{{ scan.project.name }}</a></li>
+        <li class="breadcrumb-item active">v{{ scan.version_label }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h3 class="fw-bold mb-1">
+            <i class="bi bi-clipboard-data me-2"></i>{{ scan.project.domain }}
+        </h3>
+        <p class="text-muted mb-0">
+            Scan date: {{ scan.scan_date }} &middot;
+            {% if scan.status == 'completed' %}Completed {{ scan.completed_at|timesince }} ago{% elif scan.status == 'running' %}Running...{% elif scan.status == 'failed' %}Failed{% else %}Pending{% endif %}
+            {% if scan.error_message %}
+            <span class="text-danger ms-2"><i class="bi bi-exclamation-triangle"></i> {{ scan.error_message }}</span>
+            {% endif %}
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        {% if scan.status == 'running' %}
+        <a href="{% url 'live_scan' scan.id %}" class="btn btn-warning btn-sm">
+            <i class="bi bi-broadcast me-1"></i>Live View
+        </a>
+        {% endif %}
+        <a href="{% url 'diff_scans' scan.project.id %}?scan_a={{ scan.id }}" class="btn btn-outline-info btn-sm">
+            <i class="bi bi-diff me-1"></i>Compare
+        </a>
+        <form method="POST" action="{% url 'delete_scan' scan.id %}" style="display:inline;" onsubmit="return confirm('Delete this scan and all its data?')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-trash me-1"></i>Delete
+            </button>
+        </form>
+        <span class="badge {% if scan.status == 'completed' %}bg-success{% elif scan.status == 'running' %}bg-warning{% elif scan.status == 'failed' %}bg-danger{% else %}bg-secondary{% endif %} fs-6 align-self-center">
+            {{ scan.status|upper }}
+        </span>
+    </div>
+</div>
+
+{% if scan.status == 'running' %}
+<div class="alert alert-warning mb-4">
+    <div class="d-flex align-items-center">
+        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+        <strong>Scan in progress...</strong> This page will auto-refresh.
+    </div>
+</div>
+<script>
+    setTimeout(() => window.location.reload(), 10000);
+</script>
+{% endif %}
+
+<ul class="nav nav-tabs scan-tabs mb-4" id="scanTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#overview-tab"
+                hx-get="{% url 'scan_partial' scan.id 'overview' %}" hx-trigger="click once" hx-target="#overview-tab">
+            <i class="bi bi-speedometer2 me-1"></i>Overview
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#subdomains-tab"
+                hx-get="{% url 'scan_partial' scan.id 'subdomains' %}" hx-trigger="click once" hx-target="#subdomains-tab">
+            <i class="bi bi-diagram-2 me-1"></i>Subdomains
+            <span class="badge bg-secondary ms-1">{{ scan.subdomain_count }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#ports-tab"
+                hx-get="{% url 'scan_partial' scan.id 'ports' %}" hx-trigger="click once" hx-target="#ports-tab">
+            <i class="bi bi-ethernet me-1"></i>Ports
+            <span class="badge bg-secondary ms-1">{{ scan.port_count }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#nuclei-tab"
+                hx-get="{% url 'scan_partial' scan.id 'nuclei' %}" hx-trigger="click once" hx-target="#nuclei-tab">
+            <i class="bi bi-bug me-1"></i>Findings
+            <span class="badge {% if scan.nuclei_finding_count > 0 %}bg-danger{% else %}bg-secondary{% endif %} ms-1">{{ scan.nuclei_finding_count }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#secrets-tab"
+                hx-get="{% url 'scan_partial' scan.id 'secrets' %}" hx-trigger="click once" hx-target="#secrets-tab">
+            <i class="bi bi-key me-1"></i>Secrets
+            <span class="badge {% if scan.secret_count > 0 %}bg-warning{% else %}bg-secondary{% endif %} ms-1">{{ scan.secret_count }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#endpoints-tab"
+                hx-get="{% url 'scan_partial' scan.id 'endpoints' %}" hx-trigger="click once" hx-target="#endpoints-tab">
+            <i class="bi bi-link-45deg me-1"></i>Endpoints
+            <span class="badge bg-secondary ms-1">{{ scan.api_endpoint_count }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#takeover-tab"
+                hx-get="{% url 'scan_partial' scan.id 'takeover' %}" hx-trigger="click once" hx-target="#takeover-tab">
+            <i class="bi bi-exclamation-diamond me-1"></i>Takeover
+            <span class="badge {% if scan.takeover_count > 0 %}bg-danger{% else %}bg-secondary{% endif %} ms-1">{{ scan.takeover_count }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#s3-tab"
+                hx-get="{% url 'scan_partial' scan.id 's3' %}" hx-trigger="click once" hx-target="#s3-tab">
+            <i class="bi bi-cloud me-1"></i>S3
+            <span class="badge bg-secondary ms-1">{{ scan.s3_bucket_count }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#xss-tab"
+                hx-get="{% url 'scan_partial' scan.id 'xss' %}" hx-trigger="click once" hx-target="#xss-tab">
+            <i class="bi bi-code-slash me-1"></i>XSS
+            <span class="badge {% if scan.xss_finding_count > 0 %}bg-danger{% else %}bg-secondary{% endif %} ms-1">{{ scan.xss_finding_count }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#dorks-tab"
+                hx-get="{% url 'scan_partial' scan.id 'dorks' %}" hx-trigger="click once" hx-target="#dorks-tab">
+            <i class="bi bi-google me-1"></i>Dorks
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#jsfiles-tab"
+                hx-get="{% url 'scan_partial' scan.id 'jsfiles' %}" hx-trigger="click once" hx-target="#jsfiles-tab">
+            <i class="bi bi-filetype-js me-1"></i>JS Files
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <div class="tab-pane fade show active" id="overview-tab" role="tabpanel">
+        <div class="text-center py-5 text-muted">
+            <div class="spinner-border" role="status"></div>
+            <p class="mt-2">Loading...</p>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="subdomains-tab" role="tabpanel">
+        <div class="text-center py-5 text-muted">
+            <p>Click to load subdomains</p>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="ports-tab" role="tabpanel"></div>
+    <div class="tab-pane fade" id="nuclei-tab" role="tabpanel"></div>
+    <div class="tab-pane fade" id="secrets-tab" role="tabpanel"></div>
+    <div class="tab-pane fade" id="endpoints-tab" role="tabpanel"></div>
+    <div class="tab-pane fade" id="takeover-tab" role="tabpanel"></div>
+    <div class="tab-pane fade" id="s3-tab" role="tabpanel"></div>
+    <div class="tab-pane fade" id="xss-tab" role="tabpanel"></div>
+    <div class="tab-pane fade" id="dorks-tab" role="tabpanel"></div>
+    <div class="tab-pane fade" id="jsfiles-tab" role="tabpanel"></div>
+</div>
+{% endblock %}

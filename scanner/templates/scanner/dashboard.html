@@ -1,0 +1,67 @@
+{% extends "scanner/base.html" %}
+{% load humanize %}
+
+{% block title %}ReconVue — Projects{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'org_list' %}">Organisations</a></li>
+        <li class="breadcrumb-item active">All Projects</li>
+    </ol>
+</nav>
+
+<h2 class="fw-bold mb-4"><i class="bi bi-grid-fill me-2"></i>All Projects</h2>
+
+{% if projects %}
+<div class="row g-4">
+    {% for project in projects %}
+    <div class="col-xl-4 col-lg-6">
+        <div class="card project-card h-100">
+            <div class="card-body d-flex flex-column">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="card-title mb-1">{{ project.name }}</h5>
+                        <span class="domain-badge">{{ project.domain }}</span>
+                    </div>
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis fs-6">v{{ project.scan_count }}</span>
+                </div>
+                {% if project.organisation %}
+                <div class="mb-2 small text-muted">
+                    <i class="bi bi-building me-1"></i>{{ project.organisation.name }}
+                </div>
+                {% endif %}
+                {% with latest=project.latest_scan %}
+                <div class="mb-3">
+                    {% if latest %}
+                    <div class="row g-2 small">
+                        <div class="col-6"><div class="stat-badge"><span class="stat-label">Subs</span><span class="stat-value">{{ latest.subdomain_count }}</span></div></div>
+                        <div class="col-6"><div class="stat-badge"><span class="stat-label">Live</span><span class="stat-value text-success">{{ latest.live_count }}</span></div></div>
+                        <div class="col-6"><div class="stat-badge"><span class="stat-label">Findings</span><span class="stat-value {% if latest.nuclei_finding_count > 0 %}text-danger{% endif %}">{{ latest.nuclei_finding_count }}</span></div></div>
+                        <div class="col-6"><div class="stat-badge"><span class="stat-label">Secrets</span><span class="stat-value {% if latest.secret_count > 0 %}text-warning{% endif %}">{{ latest.secret_count }}</span></div></div>
+                    </div>
+                    {% else %}
+                    <p class="text-muted small mb-0">No scans yet. Start one from the project page.</p>
+                    {% endif %}
+                </div>
+                {% endwith %}
+                <div class="mt-auto d-flex gap-2">
+                    <a href="{% url 'project_detail' project.id %}" class="btn btn-sm btn-outline-light flex-grow-1"><i class="bi bi-folder2-open me-1"></i>Open</a>
+                    <a href="{% url 'diff_scans' project.id %}" class="btn btn-sm btn-outline-info flex-grow-1"><i class="bi bi-diff me-1"></i>Diff</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <i class="bi bi-search display-1 text-muted mb-3 d-block"></i>
+    <h4 class="text-muted">No projects yet</h4>
+    <p class="text-muted">Create an organisation first, then add domains as projects.</p>
+    <a href="{% url 'org_list' %}" class="btn btn-accent btn-lg">
+        <i class="bi bi-building me-2"></i>Go to Organisations
+    </a>
+</div>
+{% endif %}
+{% endblock %}
