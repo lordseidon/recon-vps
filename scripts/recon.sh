@@ -57,7 +57,7 @@ echo "[2/4] DNS brute-force (shuffledns)..."
 
 $GOBIN/shuffledns -d "$DOMAIN" \
     -w /opt/wordlists/subdomains-20k.txt \
-    -r /opt/wordlists/resolvers.txt \
+    -r /root/resolvers.txt \
     -mode bruteforce \
     -o "$OUTDIR/shuffledns.txt" 2>&1 | grep -E "[INF]|resolved|output" || true
 
@@ -95,7 +95,7 @@ if command -v altdns &>/dev/null && [ -f "$ALTDNS_WORDS" ]; then
     head -5000 "$OUTDIR/altdns-permutations.txt" > "$OUTDIR/.altdns-5k.txt"
     $GOBIN/dnsx -l "$OUTDIR/.altdns-5k.txt" \
         -a -resp -nc -silent \
-        -r /opt/wordlists/resolvers.txt \
+        -r /root/resolvers.txt \
         -o "$OUTDIR/altdns-resolved.txt" 2>/dev/null || true
     rm -f "$OUTDIR/.altdns-5k.txt"
 
@@ -148,7 +148,7 @@ echo "[3/5] Resolving with dnsx..."
 grep -oP '^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$' "$OUTDIR/all-subdomains.txt" | sort -u > "$OUTDIR/.resolv-input.txt" 2>/dev/null || true
 $GOBIN/dnsx -l "$OUTDIR/.resolv-input.txt" \
     -a -resp -nc -silent \
-    -r /opt/wordlists/resolvers.txt \
+    -r /root/resolvers.txt \
     -o "$OUTDIR/resolved-dns.txt" 2>/dev/null
 rm -f "$OUTDIR/.resolv-input.txt"
 

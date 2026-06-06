@@ -5,7 +5,7 @@ if [ -z "$DOMAIN" ]; then exit 1; fi
 
 GOBIN="$HOME/go/bin"
 WORDLIST="/opt/wordlists/subdomains-20k.txt"
-RESOLVERS="/opt/wordlists/resolvers.txt"
+RESOLVERS="/root/resolvers.txt"
 OUTDIR="${RECON_OUTPUT_DIR:-/tmp}"
 mkdir -p "$OUTDIR"
 
