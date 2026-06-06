@@ -7,9 +7,9 @@ export PATH="$VENV_BIN:$PATH"
 
 set -euo pipefail
 
-# Default: skip passive recon. Set to "false" to enable subfinder/amass.
-RECON_SKIP_PASSIVE="${RECON_SKIP_PASSIVE:-true}"
-RECON_SKIP_AMASS="${RECON_SKIP_AMASS:-true}"
+# Passive recon enabled by default. Set to "true" to skip subfinder/amass.
+RECON_SKIP_PASSIVE="${RECON_SKIP_PASSIVE:-}"
+RECON_SKIP_AMASS="${RECON_SKIP_AMASS:-}"
 
 DOMAIN="${1:-}"
 if [ -z "$DOMAIN" ]; then
