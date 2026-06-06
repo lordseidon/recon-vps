@@ -56,7 +56,7 @@ mkdir -p "$OUTDIR"
 echo "[2/4] DNS brute-force (shuffledns)..."
 
 $GOBIN/shuffledns -d "$DOMAIN" \
-    -w /opt/wordlists/subdomains-20k.txt \
+    -w /opt/wordlists/subdomains.txt \
     -r /root/resolvers.txt \
     -mode bruteforce \
     -o "$OUTDIR/shuffledns.txt" 2>&1 | grep -E "[INF]|resolved|output" || true

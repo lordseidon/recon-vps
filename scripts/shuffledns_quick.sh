@@ -4,7 +4,7 @@ DOMAIN="${1:-}"
 if [ -z "$DOMAIN" ]; then exit 1; fi
 
 GOBIN="$HOME/go/bin"
-WORDLIST="/opt/wordlists/subdomains-20k.txt"
+WORDLIST="/opt/wordlists/subdomains.txt"
 RESOLVERS="/root/resolvers.txt"
 OUTDIR="${RECON_OUTPUT_DIR:-/tmp}"
 mkdir -p "$OUTDIR"
