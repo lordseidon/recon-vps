@@ -79,8 +79,10 @@ echo ""
 echo "[2b/5] Subdomain permutation discovery (altdns)..."
 
 if command -v altdns &>/dev/null && [ -f "$ALTDNS_WORDS" ]; then
-    # Clean subdomain names for input (strip amass verbose output)
-    grep -oP '^[a-zA-Z0-9.-]+\.'"$DOMAIN"'$' "$OUTDIR/all-subdomains.txt" | sort -u > "$OUTDIR/.altdns-input.txt"
+    # Clean subdomain names for input (strip amass verbose output & IP-octet junk)
+    grep -oP '^[a-zA-Z0-9.-]+\.'"$DOMAIN"'$' "$OUTDIR/all-subdomains.txt" \
+        | grep -vP '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\.' \
+        | sort -u > "$OUTDIR/.altdns-input.txt"
     INPUT_COUNT=$(wc -l < "$OUTDIR/.altdns-input.txt")
     echo "  Input subs: ${INPUT_COUNT} | wordlist: $(wc -l < "$ALTDNS_WORDS")"
 
