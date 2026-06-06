@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # recon.sh — subfinder + amass + shuffledns + altdns + dnsx + httpx
+VENV_BIN="/opt/recon_web/.venv/bin"
+export PATH="$VENV_BIN:$PATH"
 # Usage: ./recon.sh <domain>
 
 set -euo pipefail
@@ -68,7 +70,7 @@ TOTAL=$(wc -l < "$OUTDIR/all-subdomains.txt")
 echo "  Total after brute: ${TOTAL}"
 
 # ── 2b. Permutation Discovery (altdns) ──────────────────────────────────
-ALTDNS_WORDS="$HOME/recon/wordlists/altdns-words.txt"
+ALTDNS_WORDS="/opt/wordlists/altdns-words.txt"
 echo ""
 echo "[2b/5] Subdomain permutation discovery (altdns)..."
 
