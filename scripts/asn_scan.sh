@@ -71,13 +71,13 @@ echo "  CIDRs: ${CIDR_COUNT}"
 echo ""
 echo "[2/4] Port scanning CIDRs (naabu, top 1000, skip CDN)..."
 
-MAX_CIDRS="${ASN_MAX_CIDRS:-10}"  # limit to avoid hours-long scans
+MAX_CIDRS="${ASN_MAX_CIDRS:-0}"  # 0 = no limit, scan all CIDRs
 > "$OUTDIR/asn/ips-open.txt"
 COUNT=0
 SCANNED=0
 while read cidr; do
     [ -z "$cidr" ] && continue
-    if [ "$SCANNED" -ge "$MAX_CIDRS" ]; then
+    if [ "$MAX_CIDRS" -gt 0 ] && [ "$SCANNED" -ge "$MAX_CIDRS" ]; then
         echo "    Max CIDR limit ($MAX_CIDRS) reached, stopping"
         break
     fi
@@ -106,6 +106,7 @@ echo ""
 echo "[3/4] Pulling TLS certificates (Caduceus on ${IP_COUNT} IPs)..."
 
 CADUCEUS="$HOME/go/bin/caduceus"
+> "$OUTDIR/asn/tls-domains.txt"  # ensure file exists even if caduceus missing
 if [ -x "$CADUCEUS" ]; then
     "$CADUCEUS" -i "$OUTDIR/asn/ips-open.txt" \
         -p "443,8443,4443,9443,8080" \
@@ -153,7 +154,7 @@ if [ -n "$FILTER_DOMAIN" ] && [ "$CIDR_COUNT" -gt 0 ]; then
     AMASS_SCANNED=0
     while read cidr; do
         [ -z "$cidr" ] && continue
-        if [ "$AMASS_SCANNED" -ge "$MAX_CIDRS" ]; then
+        if [ "$MAX_CIDRS" -gt 0 ] && [ "$AMASS_SCANNED" -ge "$MAX_CIDRS" ]; then
             echo "    Max CIDR limit ($MAX_CIDRS) reached, stopping"
             break
         fi
