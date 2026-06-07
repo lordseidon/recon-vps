@@ -37,5 +37,6 @@ urlpatterns = [
     path("scan/<int:scan_id>/delete/", views.delete_scan, name="delete_scan"),
     path("scan/<int:scan_id>/live/", views.live_scan, name="live_scan"),
     path("scan/<int:scan_id>/live/feed/", views.live_feed, name="live_feed"),
+    path("scan/<int:scan_id>/nuclei-sub/<int:sub_id>/live/", views.nuclei_sub_live, name="nuclei_sub_live"),
     path("api/", include(router.urls)),
 ]

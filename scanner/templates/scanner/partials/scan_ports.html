@@ -32,12 +32,12 @@
                                 title="Run Nuclei on this subdomain only">
                             <i class="bi bi-crosshair me-1"></i>Nuclei
                         </button>
-                        <button class="btn btn-sm btn-outline-secondary nuclei-log-btn d-none"
-                                title="View scan logs">
+                        <a class="btn btn-sm btn-outline-secondary nuclei-log-btn d-none"
+                           href="#" target="_blank"
+                           title="View scan logs in new tab">
                             <i class="bi bi-terminal"></i>
-                        </button>
+                        </a>
                     </div>
-                    <div class="nuclei-log-panel mt-1 d-none" style="max-height:150px;overflow-y:auto;font-size:11px;background:#1a1a2e;color:#0f0;padding:4px 8px;border-radius:4px;font-family:monospace"></div>
                 </td>
             </tr>
             {% endfor %}
@@ -55,9 +55,19 @@ function filterPorts(query) {
     });
 }
 
+function nucleiLogUrl(scanId, subId) {
+    return `/scan/${scanId}/nuclei-sub/${subId}/live/`;
+}
+
 // On page load, check status of all subdomains
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.port-row').forEach(row => {
+        const logBtn = row.querySelector('.nuclei-log-btn');
+        const subId = row.dataset.subdomainId;
+        const scanId = row.dataset.scanId;
+        if (logBtn && scanId && subId) {
+            logBtn.href = nucleiLogUrl(scanId, subId);
+        }
         checkNucleiStatus(row);
     });
 });
@@ -71,13 +81,12 @@ async function checkNucleiStatus(row) {
         const data = await resp.json();
         const btn = row.querySelector('.run-nuclei-btn');
         const logBtn = row.querySelector('.nuclei-log-btn');
-        const panel = row.querySelector('.nuclei-log-panel');
         if (data.running) {
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
             btn.className = 'btn btn-sm btn-warning';
             btn.disabled = true;
             logBtn.classList.remove('d-none');
-            updateLogPanel(panel, data.logs);
+            logBtn.href = nucleiLogUrl(scanId, subId);
             setTimeout(() => checkNucleiStatus(row), 3000);
         } else if (data.findings > 0) {
             btn.innerHTML = `<i class="bi bi-check-circle me-1"></i>${data.findings} found`;
@@ -85,21 +94,16 @@ async function checkNucleiStatus(row) {
             btn.disabled = true;
             if (data.logs.length > 0) {
                 logBtn.classList.remove('d-none');
-                updateLogPanel(panel, data.logs);
+                logBtn.href = nucleiLogUrl(scanId, subId);
             }
         } else if (data.logs.length > 0) {
-            // Completed with 0 findings
             btn.innerHTML = '<i class="bi bi-dash-circle me-1"></i>0 found';
             btn.className = 'btn btn-sm btn-outline-secondary';
             btn.disabled = true;
             logBtn.classList.remove('d-none');
-            updateLogPanel(panel, data.logs);
+            logBtn.href = nucleiLogUrl(scanId, subId);
         }
     } catch(e) { /* ignore */ }
-}
-
-function updateLogPanel(panel, logs) {
-    panel.innerHTML = logs.map(l => `<div><b>[${l.cat}]</b> ${l.msg}</div>`).join('');
 }
 
 // Run Nuclei button click
@@ -108,6 +112,7 @@ document.querySelectorAll('.run-nuclei-btn').forEach(btn => {
         const row = this.closest('.port-row');
         const subId = row.dataset.subdomainId;
         const scanId = row.dataset.scanId;
+        const logBtn = row.querySelector('.nuclei-log-btn');
 
         this.disabled = true;
         this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Starting...';
@@ -129,8 +134,8 @@ document.querySelectorAll('.run-nuclei-btn').forEach(btn => {
             } else {
                 this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
                 this.className = 'btn btn-sm btn-warning';
-                row.querySelector('.nuclei-log-btn').classList.remove('d-none');
-                // Poll for completion
+                logBtn.classList.remove('d-none');
+                logBtn.href = nucleiLogUrl(scanId, subId);
                 const poll = setInterval(async () => {
                     try {
                         const sr = await fetch(`/api/scans/${scanId}/nuclei-sub/${subId}/status/`);
@@ -145,7 +150,6 @@ document.querySelectorAll('.run-nuclei-btn').forEach(btn => {
                                 this.className = 'btn btn-sm btn-outline-secondary';
                             }
                             this.disabled = true;
-                            updateLogPanel(row.querySelector('.nuclei-log-panel'), sd.logs);
                         }
                     } catch(e) {}
                 }, 3000);
@@ -153,21 +157,6 @@ document.querySelectorAll('.run-nuclei-btn').forEach(btn => {
         } catch(err) {
             this.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Error';
             this.disabled = false;
-        }
-    });
-});
-
-// Log button toggles the log panel
-document.querySelectorAll('.nuclei-log-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const panel = this.closest('.port-row').querySelector('.nuclei-log-panel');
-        panel.classList.toggle('d-none');
-        if (!panel.classList.contains('d-none')) {
-            const subId = this.closest('.port-row').dataset.subdomainId;
-            const scanId = this.closest('.port-row').dataset.scanId;
-            fetch(`/api/scans/${scanId}/nuclei-sub/${subId}/status/`)
-                .then(r => r.json())
-                .then(d => updateLogPanel(panel, d.logs));
         }
     });
 });

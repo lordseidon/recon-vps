@@ -1,7 +1,7 @@
 import json
 import os
 from django.shortcuts import render, redirect, get_object_or_404
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, Http404
 from django.contrib import messages
 from django.utils import timezone
 from django.db import models
@@ -252,6 +252,21 @@ def diff_scans(request, project_id):
         context["diff"] = diff
 
     return render(request, "scanner/diff_scan.html", context)
+
+
+def nuclei_sub_live(request, scan_id, sub_id):
+    scan = get_object_or_404(Scan, id=scan_id)
+    try:
+        subdomain = Subdomain.objects.get(id=sub_id, scan=scan)
+    except Subdomain.DoesNotExist:
+        raise Http404("Subdomain not found")
+
+    context = {
+        "scan": scan,
+        "subdomain": subdomain.name,
+        "sub_id": sub_id,
+    }
+    return render(request, "scanner/nuclei_sub_live.html", context)
 
 
 # ── AJAX Endpoints ──
@@ -531,6 +546,8 @@ class ScanViewSet(viewsets.ModelViewSet):
             return Response({"error": "Subdomain not found"}, status=404)
 
         from .models import ScanLog
+        since_id = int(request.query_params.get("since", 0))
+
         started = ScanLog.objects.filter(
             scan=scan, category="nuclei_start",
             data__subdomain_id=subdomain_id,
@@ -540,14 +557,24 @@ class ScanViewSet(viewsets.ModelViewSet):
             data__subdomain_id=subdomain_id,
         ).order_by("-id").first()
 
-        running = started and not done
+        running = bool(started) and not bool(done)
         findings = done.data.get("findings", 0) if done else 0
 
-        logs = list(ScanLog.objects.filter(
+        log_filter = ScanLog.objects.filter(
             scan=scan,
             category__in=["nuclei_start", "nuclei_done"],
             data__subdomain_id=subdomain_id,
-        ).order_by("-id")[:20])
+        )
+        if since_id:
+            log_filter = log_filter.filter(id__gt=since_id)
+        logs = list(log_filter.order_by("-id")[:50])
+
+        return Response({
+            "running": running,
+            "findings": findings,
+            "subdomain": subdomain.name,
+            "logs": [{"msg": l.message, "cat": l.category, "id": l.id} for l in reversed(logs)],
+        })
 
         return Response({
             "running": running,

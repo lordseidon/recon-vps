@@ -1,0 +1,133 @@
+{% extends "scanner/base.html" %}
+
+{% block title %}Nuclei — {{ subdomain }}{% endblock %}
+
+{% block extra_head %}
+<style>
+.live-header {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 12px 20px;
+    position: sticky; top: 56px; z-index: 10;
+}
+.log-feed {
+    background: #0d1117; border: 1px solid var(--border-color); border-radius: 8px;
+    height: calc(100vh - 220px); overflow-y: auto; padding: 8px 0;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+}
+.log-line {
+    padding: 2px 16px; display: flex; gap: 8px; line-height: 1.5;
+}
+.log-line:hover { background: rgba(255,255,255,0.02); }
+.log-time { color: #484f58; flex-shrink: 0; min-width: 70px; }
+.log-cat { flex-shrink: 0; min-width: 80px; font-weight:600; font-size:0.7rem; }
+.log-msg { word-break: break-all; }
+.cat-nuclei_start { color: #58a6ff; }
+.cat-nuclei_done { color: #3fb950; }
+.cat-nuclei_output { color: #f0883e; }
+.cat-error { color: #f85149; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Projects</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'project_detail' scan.project.id %}">{{ scan.project.name }}</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'scan_detail' scan.id %}">Scan</a></li>
+        <li class="breadcrumb-item active">Nuclei: {{ subdomain }}</li>
+    </ol>
+</nav>
+
+<div class="live-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-0 fw-bold">
+                <i class="bi bi-crosshair me-2 text-accent"></i>{{ subdomain }}
+                <span id="statusIcon" class="spin d-inline-block ms-2">⚙</span>
+            </h4>
+            <span class="text-muted small">{{ scan.scan_date }} — Nuclei Scan</span>
+        </div>
+        <div>
+            <span id="statusBadge" class="badge fs-6 px-3 py-2 bg-warning">RUNNING</span>
+            <span id="findingCount" class="badge bg-success ms-2" style="display:none">0 findings</span>
+        </div>
+    </div>
+</div>
+
+<div class="log-feed mt-3" id="logFeed">
+    <div class="log-line">
+        <span class="log-cat cat-nuclei_start">START</span>
+        <span class="log-msg">Connecting to scan feed for {{ subdomain }}...</span>
+    </div>
+</div>
+
+<script>
+let lastLogId = 0;
+const scanId = {{ scan.id }};
+const subId = {{ sub_id }};
+let pollInterval = 2000;
+
+function formatTime() {
+    const d = new Date();
+    return d.getHours().toString().padStart(2,'0') + ':' +
+           d.getMinutes().toString().padStart(2,'0') + ':' +
+           d.getSeconds().toString().padStart(2,'0');
+}
+
+async function poll() {
+    try {
+        const resp = await fetch(`/api/scans/${scanId}/nuclei-sub/${subId}/status/?since=${lastLogId}`);
+        const data = await resp.json();
+
+        // Update status
+        const badge = document.getElementById('statusBadge');
+        const icon = document.getElementById('statusIcon');
+        const fcount = document.getElementById('findingCount');
+
+        if (data.running) {
+            badge.textContent = 'RUNNING';
+            badge.className = 'badge fs-6 px-3 py-2 bg-warning';
+            icon.classList.add('spin');
+        } else {
+            badge.textContent = 'DONE';
+            badge.className = 'badge fs-6 px-3 py-2 bg-success';
+            icon.classList.remove('spin');
+            pollInterval = 5000;
+        }
+
+        if (data.findings > 0) {
+            fcount.style.display = '';
+            fcount.textContent = `${data.findings} findings`;
+        }
+
+        // Append new logs
+        const feed = document.getElementById('logFeed');
+        for (const log of data.logs) {
+            const div = document.createElement('div');
+            div.className = 'log-line';
+            div.innerHTML = `<span class="log-time">${formatTime()}</span>` +
+                `<span class="log-cat cat-${log.cat}">${log.cat.toUpperCase()}</span>` +
+                `<span class="log-msg">${escapeHtml(log.msg)}</span>`;
+            feed.appendChild(div);
+            lastLogId = Math.max(lastLogId, log.id || 0);
+        }
+
+        feed.scrollTop = feed.scrollHeight;
+    } catch(e) {
+        console.error('Poll error:', e);
+    }
+    setTimeout(poll, pollInterval);
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+poll();
+</script>
+{% endblock %}
