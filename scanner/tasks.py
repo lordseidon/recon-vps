@@ -428,7 +428,9 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
     outfile = outdir / f"nuclei-sub-{subdomain_id}.json"
     outdir.mkdir(parents=True, exist_ok=True)
 
-    _emit_log(scan, "step", f"Nuclei scan started for {subdomain.name} ({len(targets)} targets)")
+    _emit_log(scan, "nuclei_start", f"Nuclei started for {subdomain.name}", {
+        "subdomain_id": subdomain_id, "subdomain": subdomain.name, "targets": len(targets)
+    })
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tf:
         tf.write("\n".join(targets))
@@ -452,7 +454,9 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
         Path(targets_file).unlink(missing_ok=True)
 
     if not outfile.exists() or outfile.stat().st_size == 0:
-        _emit_log(scan, "step", f"Nuclei on {subdomain.name} done: 0 findings")
+        _emit_log(scan, "nuclei_done", f"Nuclei on {subdomain.name} done: 0 findings", {
+            "subdomain_id": subdomain_id, "subdomain": subdomain.name, "findings": 0
+        })
         return {"status": "done", "findings": 0, "subdomain": subdomain.name}
 
     from .parsers import parse_nuclei
@@ -462,7 +466,9 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
             [NucleiFinding(scan=scan, **entry) for entry in raw], batch_size=500)
     finding_count = len(raw)
 
-    _emit_log(scan, "step", f"Nuclei on {subdomain.name} done: {finding_count} findings")
+    _emit_log(scan, "nuclei_done", f"Nuclei on {subdomain.name} done: {finding_count} findings", {
+        "subdomain_id": subdomain_id, "subdomain": subdomain.name, "findings": finding_count
+    })
     scan.nuclei_finding_count = NucleiFinding.objects.filter(scan=scan).count()
     scan.save(update_fields=["nuclei_finding_count"])
 

@@ -517,9 +517,43 @@ class ScanViewSet(viewsets.ModelViewSet):
         from .tasks import run_single_nuclei
         run_single_nuclei.delay(scan.id, subdomain.id, ports)
         return Response({
-            "status": "started",
+             "status": "started",
             "subdomain": subdomain.name,
             "targets": len(ports),
+        })
+
+    @action(detail=True, methods=["get"], url_path=r"nuclei-sub/(?P<subdomain_id>\d+)/status")
+    def nuclei_sub_status(self, request, pk=None, subdomain_id=None):
+        scan = self.get_object()
+        try:
+            subdomain = Subdomain.objects.get(id=subdomain_id, scan=scan)
+        except Subdomain.DoesNotExist:
+            return Response({"error": "Subdomain not found"}, status=404)
+
+        from .models import ScanLog
+        started = ScanLog.objects.filter(
+            scan=scan, category="nuclei_start",
+            data__subdomain_id=subdomain_id,
+        ).order_by("-id").first()
+        done = ScanLog.objects.filter(
+            scan=scan, category="nuclei_done",
+            data__subdomain_id=subdomain_id,
+        ).order_by("-id").first()
+
+        running = started and not done
+        findings = done.data.get("findings", 0) if done else 0
+
+        logs = list(ScanLog.objects.filter(
+            scan=scan, category__in=["nuclei_start", "nuclei_done", "output"],
+        ).filter(
+            Q(data__subdomain_id=subdomain_id) | Q(message__icontains=subdomain.name)
+        ).order_by("-id")[:20])
+
+        return Response({
+            "running": running,
+            "findings": findings,
+            "subdomain": subdomain.name,
+            "logs": [{"msg": l.message, "cat": l.category} for l in reversed(logs)],
         })
 
 
