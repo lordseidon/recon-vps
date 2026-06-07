@@ -283,9 +283,10 @@ def run_org_asn_discovery(self, org_id):
     for k, v in os.environ.items():
         if not k.startswith(('GOPATH', 'GOROOT', 'GOMODCACHE', 'GOCACHE')):
             env[k] = v
+    env["HOME"] = "/root"
     env["RECON_OUTPUT_DIR"] = str(output_base)
     env["DOMAIN"] = org.name
-    env["PATH"] = f'/root/go/bin:/usr/local/bin:/usr/bin:/bin:" + env.get("PATH", "")'
+    env["PATH"] = "/root/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:" + env.get("PATH", "")
 
     _emit_org_log(org, "step", f"Starting ASN discovery for {org.name}")
 
