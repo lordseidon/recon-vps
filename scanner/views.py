@@ -544,9 +544,9 @@ class ScanViewSet(viewsets.ModelViewSet):
         findings = done.data.get("findings", 0) if done else 0
 
         logs = list(ScanLog.objects.filter(
-            scan=scan, category__in=["nuclei_start", "nuclei_done", "output"],
-        ).filter(
-            Q(data__subdomain_id=subdomain_id) | Q(message__icontains=subdomain.name)
+            scan=scan,
+            category__in=["nuclei_start", "nuclei_done"],
+            data__subdomain_id=subdomain_id,
         ).order_by("-id")[:20])
 
         return Response({
