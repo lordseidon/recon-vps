@@ -34,7 +34,20 @@ echo "  → amass intel"
 timeout 120 amass intel -org "$ORG_NAME" 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.\d+/\d+' | sort -uV >> "$OUTDIR/asn/cidrs.txt" || true
 
 echo "  → hackertarget"
-curl -s "https://api.hackertarget.com/aslookup/?q=${ORG_NAME// /%20}" 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.\d+/\d+' | sort -uV >> "$OUTDIR/asn/cidrs.txt" || true
+# First get ASN numbers, then look up CIDRs from each ASN
+ASNS=$(curl -s "https://api.hackertarget.com/aslookup/?q=${ORG_NAME// /%20}" 2>/dev/null | grep -oP 'AS\d+' | sort -u || true)
+for asn in $ASNS; do
+    curl -s "https://api.hackertarget.com/aslookup/?q=${asn}" 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.\d+/\d+' | sort -uV >> "$OUTDIR/asn/cidrs.txt" || true
+    # Also try BGPView API for more CIDRs
+    curl -s "https://api.bgpview.io/asn/${asn}/prefixes" 2>/dev/null | python3 -c "
+import sys,json
+try:
+    d=json.load(sys.stdin)
+    for p in d.get('data',{}).get('ipv4_prefixes',[]):
+        print(p.get('prefix',''))
+except: pass
+" 2>/dev/null | sort -uV >> "$OUTDIR/asn/cidrs.txt" || true
+done
 
 echo "  → whois fallback"
 if [ -n "$FILTER_DOMAIN" ]; then

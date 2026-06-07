@@ -1,30 +1,18 @@
 #!/bin/bash
 
 # portscan.sh — Port scan subdomains with naabu
-# Usage: ./portscan.sh <domain> [-scan 1k|10k|all]
+# Runs top-1000 first, then continues 1-10000 in background
+# Usage: ./portscan.sh <domain>
 
 set -euo pipefail
 
 BASE="${RECON_OUTPUT_DIR:-$HOME/recon}"
 DOMAIN="${1:-}"
-SCAN_MODE="10k"
-
-# Parse -scan flag from remaining args
-for arg in "${@:2}"; do
-    [[ "$arg" =~ ^(1k|10k|all)$ ]] && SCAN_MODE="$arg" && break
-done
 
 if [ -z "$DOMAIN" ]; then
-    echo "Usage: ./portscan.sh <domain> [-scan 1k|10k|all]"
+    echo "Usage: ./portscan.sh <domain>"
     exit 1
 fi
-
-case "$SCAN_MODE" in
-    1k)   PORTS_FLAG="-top-ports 1000"; PORTS_LABEL="top 1k" ;;
-    10k)  PORTS_FLAG="-port 1-10000"; PORTS_LABEL="ports 1-10000" ;;
-    all)  PORTS_FLAG="-top-ports full"; PORTS_LABEL="all (65535)" ;;
-    *)    echo "Invalid scan mode: $SCAN_MODE. Use 1k, 10k, or all."; exit 1 ;;
-esac
 
 INDIR="$BASE"
 SUBS_FILE="$INDIR/all-subdomains.txt"
@@ -39,17 +27,16 @@ grep -oP '^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$' "$SUBS_FILE" | sort -u > "$
 TOTAL=$(wc -l < "$OUTDIR/.subs-to-scan.txt")
 
 echo "========================================"
-echo "  PORT SCAN — $DOMAIN (naabu, $PORTS_LABEL)"
+echo "  PORT SCAN — $DOMAIN (naabu, top-1000 + background 1-10000)"
 echo "  Targets: ${TOTAL} subdomains"
 echo "========================================"
 
-# ── Run naabu ─────────────────────────────────────────────────────────
+# ── Run naabu (top-1000) ─────────────────────────────────────────────
 echo ""
-echo "Scanning with naabu..."
+echo "Scanning with naabu (top-1000)..."
 
-# Naabu can take hostnames directly (-list)
 naabu -list "$OUTDIR/.subs-to-scan.txt" \
-    $PORTS_FLAG \
+    -top-ports 1000 \
     -ec \
     -silent \
     -nc \
@@ -60,8 +47,6 @@ RAW=$(wc -l < "$OUTDIR/naabu-raw.json" 2>/dev/null || echo 0)
 echo "  Raw results: ${RAW}"
 
 # ── Build open-ports.json ─────────────────────────────────────────────
-# Naabu outputs: {"host":"sub.mtn.ng","ip":"1.2.3.4","port":443}
-# Group by hostname
 python3 -c "
 import json
 
@@ -83,6 +68,59 @@ print(f'  Hosts with open ports: {len(result)}')
 total_ports = sum(len(e['ports']) for e in result)
 print(f'  Total open ports: {total_ports}')
 "
+
+# ── Background full port scan (1-10000) ───────────────────────────────
+FULL_OUT="$OUTDIR/naabu-full.json"
+FULL_PIDFILE="$OUTDIR/.naabu-full.pid"
+
+if [ -f "$FULL_OUT" ] && [ -s "$FULL_OUT" ]; then
+    echo ""
+    echo "Full port scan already completed, skipping background run"
+elif [ -f "$FULL_PIDFILE" ] && kill -0 $(cat "$FULL_PIDFILE") 2>/dev/null; then
+    echo ""
+    echo "Full port scan still running in background (PID $(cat "$FULL_PIDFILE"))"
+else
+    echo ""
+    echo "Starting background full port scan (1-10000) for ${TOTAL} targets..."
+    > "$FULL_OUT"
+    nohup bash -c "
+        naabu -list '$OUTDIR/.subs-to-scan.txt' \
+            -port 1-10000 \
+            -ec \
+            -silent \
+            -nc \
+            -json \
+            -o '$FULL_OUT' 2>/dev/null
+        python3 -c \"
+import json
+with open('$FULL_OUT') as f:
+    raw = [json.loads(line) for line in f if line.strip()]
+grouped = {}
+for r in raw:
+    host = r.get('host', r.get('ip', ''))
+    port = str(r['port'])
+    grouped.setdefault(host, set()).add(port)
+result = [{'subdomain': h, 'ports': sorted(p, key=int)} for h, p in sorted(grouped.items())]
+with open('$OUTDIR/open-ports-full.json', 'w') as f:
+    json.dump(result, f, indent=2)
+# Merge into main open-ports.json for DB import
+imported = set()
+with open('$OUTDIR/open-ports.json') as f:
+    existing = json.load(f)
+    for e in existing:
+        grouped.setdefault(e['subdomain'], set()).update(e['ports'])
+merged = [{'subdomain': h, 'ports': sorted(p, key=int)} for h, p in sorted(grouped.items())]
+with open('$OUTDIR/open-ports.json', 'w') as f:
+    json.dump(merged, f, indent=2)
+total = sum(len(m['ports']) for m in merged)
+print(f'Full scan: {len(merged)} hosts, {total} ports total')
+\"
+        rm -f '$FULL_PIDFILE'
+    " > /dev/null 2>&1 &
+    BG_PID=$!
+    echo "$BG_PID" > "$FULL_PIDFILE"
+    echo "  Background full scan started (PID $BG_PID)"
+fi
 
 # ── Summary ───────────────────────────────────────────────────────────
 rm -f "$OUTDIR/.subs-to-scan.txt"
