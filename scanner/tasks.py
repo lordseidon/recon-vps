@@ -297,9 +297,15 @@ def run_org_asn_discovery(self, org_id):
         org.save()
         return {"error": "asn_scan.sh not found"}
 
+    # Get the first linked domain as filter for whois/amass
+    filter_domain = ""
+    first_project = org.projects.first()
+    if first_project:
+        filter_domain = first_project.domain
+
     try:
         proc = subprocess.Popen(
-            ["bash", str(script_path), org.name],
+            ["bash", str(script_path), org.name, filter_domain],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, cwd=str(output_base), env=env,
         )
