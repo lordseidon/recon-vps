@@ -84,7 +84,7 @@ while read cidr; do
     COUNT=$((COUNT + 1))
     SCANNED=$((SCANNED + 1))
     printf "    [%s/%s] %s " "$COUNT" "$CIDR_COUNT" "$cidr"
-    timeout 180 naabu -host "$cidr" -top-ports 1000 -ec -silent -nc -json -o "$OUTDIR/asn/.naabu.jsonl" 2>/dev/null || true
+    timeout 120 naabu -host "$cidr" -top-ports 100 -ec -silent -nc -json -o "$OUTDIR/asn/.naabu.jsonl" 2>/dev/null || true
     python3 -c "
 import json
 with open('$OUTDIR/asn/.naabu.jsonl') as f:
