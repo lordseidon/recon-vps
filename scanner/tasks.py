@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.conf import settings
 from pathlib import Path
 
-from .models import Project, Scan, ScanLog, ScanProgress, Organisation, ASNCIDR
+from .models import Project, Scan, ScanLog, ScanProgress, Organisation, ASNCIDR, Subdomain, NucleiFinding
 from .parsers import parse_http_info
 
 
@@ -404,6 +404,69 @@ def run_org_asn_discovery(self, org_id):
 
     org.asn_status = "completed"
     org.save()
+
+
+@shared_task(bind=True, time_limit=600)
+def run_single_nuclei(self, scan_id, subdomain_id, ports):
+    """Run nuclei on a single subdomain with its open ports."""
+    import tempfile, json
+    from pathlib import Path
+    from django.conf import settings
+
+    try:
+        scan = Scan.objects.get(id=scan_id)
+        subdomain = Subdomain.objects.get(id=subdomain_id, scan=scan)
+    except (Scan.DoesNotExist, Subdomain.DoesNotExist):
+        return {"error": "Scan or subdomain not found"}
+
+    nuclei_bin = Path("/root/go/bin/nuclei")
+    if not nuclei_bin.exists():
+        return {"error": "nuclei not installed"}
+
+    targets = [f"{subdomain.name}:{p}" for p in ports]
+    outdir = settings.RECON_BASE_DIR / scan.project.domain / scan.scan_date.strftime("%d-%m-%Y")
+    outfile = outdir / f"nuclei-sub-{subdomain_id}.json"
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    _emit_log(scan, "step", f"Nuclei scan started for {subdomain.name} ({len(targets)} targets)")
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tf:
+        tf.write("\n".join(targets))
+        targets_file = tf.name
+
+    try:
+        import subprocess
+        env = {}
+        for k, v in os.environ.items():
+            if not k.startswith(("GOPATH", "GOROOT", "GOMODCACHE", "GOCACHE")):
+                env[k] = v
+        env["HOME"] = "/root"
+        env["PATH"] = "/root/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:" + env.get("PATH", "")
+
+        proc = subprocess.run(
+            [str(nuclei_bin), "-l", targets_file, "-as", "-nh", "-silent", "-rl", "30", "-timeout", "10",
+             "-o", str(outfile)],
+            capture_output=True, text=True, timeout=300, env=env,
+        )
+    finally:
+        Path(targets_file).unlink(missing_ok=True)
+
+    if not outfile.exists() or outfile.stat().st_size == 0:
+        _emit_log(scan, "step", f"Nuclei on {subdomain.name} done: 0 findings")
+        return {"status": "done", "findings": 0, "subdomain": subdomain.name}
+
+    from .parsers import parse_nuclei
+    raw = parse_nuclei(str(outfile))
+    if raw:
+        NucleiFinding.objects.bulk_create(
+            [NucleiFinding(scan=scan, **entry) for entry in raw], batch_size=500)
+    finding_count = len(raw)
+
+    _emit_log(scan, "step", f"Nuclei on {subdomain.name} done: {finding_count} findings")
+    scan.nuclei_finding_count = NucleiFinding.objects.filter(scan=scan).count()
+    scan.save(update_fields=["nuclei_finding_count"])
+
+    return {"status": "done", "findings": finding_count, "subdomain": subdomain.name}
 
 
 def _emit_org_log(org, category, message, data=None):

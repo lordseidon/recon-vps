@@ -504,6 +504,24 @@ class ScanViewSet(viewsets.ModelViewSet):
         scan = self.get_object()
         return Response(ScanSerializer(scan).data)
 
+    @action(detail=True, methods=["post"], url_path=r"nuclei-sub/(?P<subdomain_id>\d+)")
+    def nuclei_subdomain(self, request, pk=None, subdomain_id=None):
+        scan = self.get_object()
+        try:
+            subdomain = Subdomain.objects.get(id=subdomain_id, scan=scan)
+        except Subdomain.DoesNotExist:
+            return Response({"error": "Subdomain not found"}, status=404)
+        ports = list(subdomain.ports.values_list("port_number", flat=True))
+        if not ports:
+            return Response({"error": "No open ports for this subdomain"}, status=400)
+        from .tasks import run_single_nuclei
+        run_single_nuclei.delay(scan.id, subdomain.id, ports)
+        return Response({
+            "status": "started",
+            "subdomain": subdomain.name,
+            "targets": len(ports),
+        })
+
 
 class SubdomainViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Subdomain.objects.all()
