@@ -38,10 +38,13 @@ curl -s "https://api.hackertarget.com/aslookup/?q=${ORG_NAME// /%20}" 2>/dev/nul
 
 echo "  → whois fallback"
 if [ -n "$FILTER_DOMAIN" ]; then
-    whois "$FILTER_DOMAIN" 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.\d+/\d+' | sort -uV >> "$OUTDIR/asn/cidrs.txt" || true
-    host "$FILTER_DOMAIN" 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.\d+' | sort -u | while read ip; do
-        whois "$ip" 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.\d+/\d+' | head -3
+    set +e
+    # Resolve domain to IPs, then whois each IP for CIDR
+    IPS=$(dig +short "$FILTER_DOMAIN" A 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.\d+' | sort -u || true)
+    for ip in $IPS; do
+        whois "$ip" 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.\d+/\d+' | head -5
     done | sort -uV >> "$OUTDIR/asn/cidrs.txt" 2>/dev/null || true
+    set -e
 fi
 fi
 
@@ -54,12 +57,20 @@ echo "  CIDRs: ${CIDR_COUNT}"
 echo ""
 echo "[2/4] Port scanning CIDRs (naabu, top 1000, skip CDN)..."
 
+MAX_CIDRS="${ASN_MAX_CIDRS:-10}"  # limit to avoid hours-long scans
 > "$OUTDIR/asn/ips-open.txt"
 COUNT=0
+SCANNED=0
 while read cidr; do
+    [ -z "$cidr" ] && continue
+    if [ "$SCANNED" -ge "$MAX_CIDRS" ]; then
+        echo "    Max CIDR limit ($MAX_CIDRS) reached, stopping"
+        break
+    fi
     COUNT=$((COUNT + 1))
+    SCANNED=$((SCANNED + 1))
     printf "    [%s/%s] %s " "$COUNT" "$CIDR_COUNT" "$cidr"
-    naabu -host "$cidr" -top-ports 1000 -ec -silent -nc -json -o "$OUTDIR/asn/.naabu.jsonl" 2>/dev/null || true
+    timeout 180 naabu -host "$cidr" -top-ports 1000 -ec -silent -nc -json -o "$OUTDIR/asn/.naabu.jsonl" 2>/dev/null || true
     python3 -c "
 import json
 with open('$OUTDIR/asn/.naabu.jsonl') as f:
@@ -125,8 +136,15 @@ echo "[4/4] Reverse DNS + cert discovery (amass enum -cidr)..."
 if [ -n "$FILTER_DOMAIN" ] && [ "$CIDR_COUNT" -gt 0 ]; then
     > "$OUTDIR/asn/cidr-subs.txt"
     COUNT=0
+    AMASS_SCANNED=0
     while read cidr; do
+        [ -z "$cidr" ] && continue
+        if [ "$AMASS_SCANNED" -ge "$MAX_CIDRS" ]; then
+            echo "    Max CIDR limit ($MAX_CIDRS) reached, stopping"
+            break
+        fi
         COUNT=$((COUNT + 1))
+        AMASS_SCANNED=$((AMASS_SCANNED + 1))
         printf "    [%s/%s] %s" "$COUNT" "$CIDR_COUNT" "$cidr"
         timeout 60 amass enum -passive -d "$FILTER_DOMAIN" -cidr "$cidr" 2>/dev/null \
             | grep -oP '[a-zA-Z0-9.-]+\.'"$FILTER_DOMAIN"'' \
