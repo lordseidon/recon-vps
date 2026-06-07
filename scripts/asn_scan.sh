@@ -34,9 +34,10 @@ echo "  → amass intel"
 timeout 120 amass intel -org "$ORG_NAME" 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.\d+/\d+' | sort -uV >> "$OUTDIR/asn/cidrs.txt" || true
 
 echo "  → hackertarget"
-# First get ASN numbers, then look up CIDRs from each ASN
-ASNS=$(curl -s "https://api.hackertarget.com/aslookup/?q=${ORG_NAME// /%20}" 2>/dev/null | grep -oP 'AS\d+' | sort -u || true)
-for asn in $ASNS; do
+# First get ASN numbers (hackertarget returns comma-separated, not AS-prefixed)
+ASNS=$(curl -s "https://api.hackertarget.com/aslookup/?q=${ORG_NAME// /%20}" 2>/dev/null | grep -oP '"\d+"' | tr -d '"' | sort -u || true)
+for num in $ASNS; do
+    asn="AS${num}"
     curl -s "https://api.hackertarget.com/aslookup/?q=${asn}" 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.\d+/\d+' | sort -uV >> "$OUTDIR/asn/cidrs.txt" || true
     # Also try BGPView API for more CIDRs
     curl -s "https://api.bgpview.io/asn/${asn}/prefixes" 2>/dev/null | python3 -c "
