@@ -428,13 +428,15 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
     outfile = outdir / f"nuclei-sub-{subdomain_id}.json"
     outdir.mkdir(parents=True, exist_ok=True)
 
-    _emit_log(scan, "nuclei_start", f"Nuclei started for {subdomain.name}", {
+    _emit_log(scan, "nuclei_start", f"Nuclei started for {subdomain.name} ({len(targets)} targets)", {
         "subdomain_id": subdomain_id, "subdomain": subdomain.name, "targets": len(targets)
     })
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tf:
         tf.write("\n".join(targets))
         targets_file = tf.name
+
+    finding_output = []  # collect stdout lines
 
     try:
         import subprocess
@@ -445,11 +447,26 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
         env["HOME"] = "/root"
         env["PATH"] = "/root/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:" + env.get("PATH", "")
 
-        proc = subprocess.run(
-            [str(nuclei_bin), "-l", targets_file, "-as", "-nh", "-silent", "-rl", "30", "-timeout", "10",
+        proc = subprocess.Popen(
+            [str(nuclei_bin), "-l", targets_file, "-as", "-nh", "-rl", "30", "-timeout", "10",
              "-o", str(outfile)],
-            capture_output=True, text=True, timeout=300, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, env=env,
         )
+        for line in proc.stdout:
+            line = line.strip()
+            if line:
+                finding_output.append(line)
+                _emit_log(scan, "nuclei_output", line, {
+                    "subdomain_id": subdomain_id, "subdomain": subdomain.name,
+                })
+        proc.wait(timeout=300)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        _emit_log(scan, "nuclei_done", f"Nuclei on {subdomain.name} timed out", {
+            "subdomain_id": subdomain_id, "subdomain": subdomain.name, "findings": 0
+        })
+        return {"status": "timeout", "findings": 0, "subdomain": subdomain.name}
     finally:
         Path(targets_file).unlink(missing_ok=True)
 
