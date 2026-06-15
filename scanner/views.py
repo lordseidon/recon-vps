@@ -522,6 +522,7 @@ class ScanViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path=r"nuclei-sub/(?P<subdomain_id>\d+)")
     def nuclei_subdomain(self, request, pk=None, subdomain_id=None):
         scan = self.get_object()
+        subdomain_id = int(subdomain_id) if subdomain_id else None
         try:
             subdomain = Subdomain.objects.get(id=subdomain_id, scan=scan)
         except Subdomain.DoesNotExist:
@@ -540,6 +541,7 @@ class ScanViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path=r"nuclei-sub/(?P<subdomain_id>\d+)/status")
     def nuclei_sub_status(self, request, pk=None, subdomain_id=None):
         scan = self.get_object()
+        subdomain_id = int(subdomain_id) if subdomain_id else None
         try:
             subdomain = Subdomain.objects.get(id=subdomain_id, scan=scan)
         except Subdomain.DoesNotExist:

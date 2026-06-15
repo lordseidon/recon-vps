@@ -448,7 +448,7 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
         env["PATH"] = "/root/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:" + env.get("PATH", "")
 
         proc = subprocess.Popen(
-            [str(nuclei_bin), "-l", targets_file, "-as", "-nh", "-rl", "30", "-timeout", "10",
+            [str(nuclei_bin), "-l", targets_file, "-as", "-rl", "30", "-timeout", "10",
              "-o", str(outfile)],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, env=env,
