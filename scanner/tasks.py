@@ -423,28 +423,55 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
     if not nuclei_bin.exists():
         return {"error": "nuclei not installed"}
 
-    # Only scan common web ports — non-HTTP ports cause infinite retries
-    web_ports = [80, 81, 300, 443, 591, 593, 832, 981, 1010, 1311, 2082, 2087, 2095, 2096, 2480,
-                 3000, 3128, 3333, 4243, 4443, 4567, 4711, 4712, 4993, 5000, 5104, 5108, 5800,
-                 6543, 7000, 7001, 7396, 7474, 8000, 8001, 8008, 8014, 8042, 8069, 8080, 8081,
-                 8088, 8090, 8091, 8180, 8181, 8222, 8243, 8280, 8281, 8333, 8443, 8500, 8834,
-                 8880, 8888, 8983, 9000, 9043, 9060, 9080, 9090, 9200, 9443, 9800, 9981, 12443,
-                 16080, 18091, 18092, 20720, 28017]
-    ports = [p for p in ports if p in web_ports]
-    if not ports:
-        _emit_log(scan, "nuclei_done", f"No HTTP ports on {subdomain.name}", {
+    targets_raw = [f"{subdomain.name}:{p}" for p in ports]
+    outdir = settings.RECON_BASE_DIR / scan.project.domain / scan.scan_date.strftime("%d-%m-%Y")
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    # Pre-filter: only pass HTTP-live ports to nuclei (avoids endless retries on non-HTTP ports)
+    httpx_bin = Path("/root/go/bin/httpx")
+    live_targets = []
+    if httpx_bin.exists():
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tf:
+            tf.write("\n".join(targets_raw))
+            raw_file = tf.name
+        try:
+            import subprocess as sp
+            env = {}
+            for k, v in os.environ.items():
+                if not k.startswith(("GOPATH", "GOROOT", "GOMODCACHE", "GOCACHE")):
+                    env[k] = v
+            env["HOME"] = "/root"
+            env["PATH"] = "/root/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:" + env.get("PATH", "")
+            result = sp.run(
+                [str(httpx_bin), "-l", raw_file, "-silent", "-nc", "-timeout", "5", "-retries", "1"],
+                capture_output=True, text=True, timeout=30, env=env,
+            )
+            for line in result.stdout.strip().split("\n"):
+                line = line.strip()
+                if line:
+                    live_targets.append(line)
+        except Exception:
+            live_targets = targets_raw  # fallback: scan all
+        finally:
+            Path(raw_file).unlink(missing_ok=True)
+    else:
+        live_targets = targets_raw
+
+    skipped = len(targets_raw) - len(live_targets)
+    _emit_log(scan, "nuclei_start", f"Nuclei started for {subdomain.name}: {len(live_targets)} live/{len(targets_raw)} targets" +
+              (f" ({skipped} non-HTTP skipped)" if skipped else ""), {
+        "subdomain_id": subdomain_id, "subdomain": subdomain.name, "targets": len(live_targets),
+        "skipped": skipped,
+    })
+
+    if not live_targets:
+        _emit_log(scan, "nuclei_done", f"Nuclei on {subdomain.name} done: no live HTTP targets", {
             "subdomain_id": subdomain_id, "subdomain": subdomain.name, "findings": 0
         })
         return {"status": "done", "findings": 0, "subdomain": subdomain.name}
 
-    targets = [f"{subdomain.name}:{p}" for p in ports]
-    outdir = settings.RECON_BASE_DIR / scan.project.domain / scan.scan_date.strftime("%d-%m-%Y")
+    targets = live_targets
     outfile = outdir / f"nuclei-sub-{subdomain_id}.json"
-    outdir.mkdir(parents=True, exist_ok=True)
-
-    _emit_log(scan, "nuclei_start", f"Nuclei started for {subdomain.name} ({len(targets)} targets)", {
-        "subdomain_id": subdomain_id, "subdomain": subdomain.name, "targets": len(targets)
-    })
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tf:
         tf.write("\n".join(targets))
@@ -469,7 +496,7 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
         )
         for line in proc.stdout:
             line = line.strip()
-            if line:
+            if line and "Skipped" not in line and "unresponsive" not in line:
                 finding_output.append(line)
                 _emit_log(scan, "nuclei_output", line, {
                     "subdomain_id": subdomain_id, "subdomain": subdomain.name,
