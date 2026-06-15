@@ -423,6 +423,20 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
     if not nuclei_bin.exists():
         return {"error": "nuclei not installed"}
 
+    # Only scan common web ports — non-HTTP ports cause infinite retries
+    web_ports = [80, 81, 300, 443, 591, 593, 832, 981, 1010, 1311, 2082, 2087, 2095, 2096, 2480,
+                 3000, 3128, 3333, 4243, 4443, 4567, 4711, 4712, 4993, 5000, 5104, 5108, 5800,
+                 6543, 7000, 7001, 7396, 7474, 8000, 8001, 8008, 8014, 8042, 8069, 8080, 8081,
+                 8088, 8090, 8091, 8180, 8181, 8222, 8243, 8280, 8281, 8333, 8443, 8500, 8834,
+                 8880, 8888, 8983, 9000, 9043, 9060, 9080, 9090, 9200, 9443, 9800, 9981, 12443,
+                 16080, 18091, 18092, 20720, 28017]
+    ports = [p for p in ports if p in web_ports]
+    if not ports:
+        _emit_log(scan, "nuclei_done", f"No HTTP ports on {subdomain.name}", {
+            "subdomain_id": subdomain_id, "subdomain": subdomain.name, "findings": 0
+        })
+        return {"status": "done", "findings": 0, "subdomain": subdomain.name}
+
     targets = [f"{subdomain.name}:{p}" for p in ports]
     outdir = settings.RECON_BASE_DIR / scan.project.domain / scan.scan_date.strftime("%d-%m-%Y")
     outfile = outdir / f"nuclei-sub-{subdomain_id}.json"
@@ -449,7 +463,7 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
 
         proc = subprocess.Popen(
             [str(nuclei_bin), "-l", targets_file, "-as", "-rl", "30", "-timeout", "10",
-             "-retries", "2", "-mhe", "-o", str(outfile)],
+             "-retries", "2", "-mhe", "1", "-o", str(outfile)],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, env=env,
         )
