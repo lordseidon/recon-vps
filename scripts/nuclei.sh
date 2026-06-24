@@ -59,6 +59,7 @@ echo ""
 nuclei -l "${OUTDIR}/.targets.txt" \
     -as \
     -nh \
+    -j \
     -rl 30 \
     -timeout 15 \
     -bs 5 -c 5 \
