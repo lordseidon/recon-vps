@@ -419,72 +419,47 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
     except (Scan.DoesNotExist, Subdomain.DoesNotExist):
         return {"error": "Scan or subdomain not found"}
 
-    nuclei_bin = Path("/root/go/bin/nuclei")
-    if not nuclei_bin.exists():
-        return {"error": "nuclei not installed"}
-
-    # Build targets like nuclei.sh: subdomain:port per line, largest port first
     ports_sorted = sorted(ports, reverse=True)
-    targets = [f"{subdomain.name}:{p}" for p in ports_sorted]
-    target_count = len(targets)
+    port_str = ",".join(str(p) for p in ports_sorted)
+    target_count = len(ports_sorted)
 
-    target_list = ", ".join(targets[:20])
-    if target_count > 20:
-        target_list += f" ... +{target_count - 20} more"
-    _emit_log(scan, "nuclei_targets", target_list, {
+    _emit_log(scan, "nuclei_targets", f"{subdomain.name}:{port_str}", {
         "subdomain_id": subdomain_id, "subdomain": subdomain.name, "targets": target_count,
     })
-
     _emit_log(scan, "nuclei_start", f"Nuclei on {subdomain.name}: {target_count} targets", {
         "subdomain_id": subdomain_id, "subdomain": subdomain.name, "targets": target_count,
     })
 
-    outdir = settings.RECON_BASE_DIR / scan.project.domain / scan.scan_date.strftime("%d-%m-%Y") / "nuclei"
-    outdir.mkdir(parents=True, exist_ok=True)
-    outfile = outdir / f"nuclei-sub-{subdomain_id}.txt"
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tf:
-        tf.write("\n".join(targets))
-        targets_file = tf.name
+    scripts_dir = settings.RECON_SCRIPTS_DIR
+    output_base = settings.RECON_BASE_DIR / scan.project.domain / scan.scan_date.strftime("%d-%m-%Y")
+    output_base.mkdir(parents=True, exist_ok=True)
+    findings_file = output_base / "nuclei" / "findings.txt"
 
     try:
-        # Same flags as nuclei.sh: -as -nh -rl 30 -timeout 15 -bs 5 -c 5
         result = subprocess.run(
-            [str(nuclei_bin), "-l", targets_file, "-as", "-nh",
-             "-rl", "30", "-timeout", "15", "-bs", "5", "-c", "5",
-             "-o", str(outfile)],
+            ["bash", str(scripts_dir / "nuclei.sh"), subdomain.name, "-p", port_str],
             capture_output=True, text=True, timeout=600,
-            env={**os.environ,
-                 "HOME": "/root",
-                 "PATH": f"/root/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:{os.environ.get('PATH','')}"},
+            cwd=str(output_base),
+            env={
+                "HOME": "/root",
+                "RECON_OUTPUT_DIR": str(output_base),
+                "PATH": f"/root/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:{os.environ.get('PATH','')}",
+            },
         )
-        # Log nuclei stdout (the human-readable output)
         for line in result.stdout.strip().split("\n"):
             line = line.strip()
             if line and "Skipped" not in line and "unresponsive" not in line:
                 _emit_log(scan, "nuclei_output", line, {
                     "subdomain_id": subdomain_id, "subdomain": subdomain.name,
                 })
-        # Log stderr if any
-        if result.stderr.strip():
-            _emit_log(scan, "nuclei_output", result.stderr.strip()[:500], {
-                "subdomain_id": subdomain_id, "subdomain": subdomain.name,
-            })
     except subprocess.TimeoutExpired:
         _emit_log(scan, "nuclei_done", f"Nuclei on {subdomain.name} timed out", {
             "subdomain_id": subdomain_id, "subdomain": subdomain.name, "findings": 0
         })
         return {"status": "timeout", "findings": 0, "subdomain": subdomain.name}
-    finally:
-        Path(targets_file).unlink(missing_ok=True)
 
-    # Parse findings using the same parser as the full scan
     from .parsers import parse_nuclei
-    raw = parse_nuclei(str(outfile))
-    if raw:
-        NucleiFinding.objects.filter(scan=scan).delete()  # replace old with new
-        NucleiFinding.objects.bulk_create(
-            [NucleiFinding(scan=scan, **entry) for entry in raw], batch_size=500)
+    raw = parse_nuclei(str(findings_file))
     finding_count = len(raw)
 
     _emit_log(scan, "nuclei_done", f"Nuclei on {subdomain.name} done: {finding_count} findings", {
