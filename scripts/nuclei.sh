@@ -5,11 +5,6 @@
 
 set -euo pipefail
 
-if [ "$EUID" -eq 0 ]; then
-    echo "nuclei doesn't need sudo. Run normally."
-    exit 1
-fi
-
 SCAN_DIR="${RECON_OUTPUT_DIR:-$HOME/recon}"
 DOMAIN_ARG="${1:-}"
 

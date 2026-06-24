@@ -423,104 +423,54 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
     if not nuclei_bin.exists():
         return {"error": "nuclei not installed"}
 
-    targets_raw = [f"{subdomain.name}:{p}" for p in ports]
-    outdir = settings.RECON_BASE_DIR / scan.project.domain / scan.scan_date.strftime("%d-%m-%Y")
-    outdir.mkdir(parents=True, exist_ok=True)
+    # Build targets like nuclei.sh: subdomain:port per line, largest port first
+    ports_sorted = sorted(ports, reverse=True)
+    targets = [f"{subdomain.name}:{p}" for p in ports_sorted]
+    target_count = len(targets)
 
-    # Pre-filter: only pass HTTP-live ports to nuclei (avoids endless retries on non-HTTP ports)
-    httpx_bin = Path("/root/go/bin/httpx")
-    live_targets = []
-    if httpx_bin.exists():
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tf:
-            tf.write("\n".join(targets_raw))
-            raw_file = tf.name
-        try:
-            import subprocess as sp
-            env = {}
-            for k, v in os.environ.items():
-                if not k.startswith(("GOPATH", "GOROOT", "GOMODCACHE", "GOCACHE")):
-                    env[k] = v
-            env["HOME"] = "/root"
-            env["PATH"] = "/root/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:" + env.get("PATH", "")
-            result = sp.run(
-                [str(httpx_bin), "-l", raw_file, "-silent", "-nc", "-timeout", "5", "-retries", "1"],
-                capture_output=True, text=True, timeout=30, env=env,
-            )
-            for line in result.stdout.strip().split("\n"):
-                line = line.strip()
-                if line:
-                    live_targets.append(line)
-        except Exception:
-            live_targets = targets_raw  # fallback: scan all
-        finally:
-            Path(raw_file).unlink(missing_ok=True)
-    else:
-        live_targets = targets_raw
-
-    skipped = len(targets_raw) - len(live_targets)
-
-    # Sort targets: largest port first
-    def _port_from_target(t):
-        try:
-            return int(t.rsplit(":", 1)[-1])
-        except ValueError:
-            return 0
-    live_targets = sorted(live_targets, key=_port_from_target, reverse=True)
-
-    # Log the scanned targets
-    target_list = ", ".join(live_targets[:20])
-    if len(live_targets) > 20:
-        target_list += f" ... +{len(live_targets) - 20} more"
+    target_list = ", ".join(targets[:20])
+    if target_count > 20:
+        target_list += f" ... +{target_count - 20} more"
     _emit_log(scan, "nuclei_targets", target_list, {
-        "subdomain_id": subdomain_id, "subdomain": subdomain.name, "targets": len(live_targets),
+        "subdomain_id": subdomain_id, "subdomain": subdomain.name, "targets": target_count,
     })
 
-    _emit_log(scan, "nuclei_start", f"Nuclei on {subdomain.name}: {len(live_targets)} live/{len(targets_raw)} targets" +
-              (f" ({skipped} non-HTTP skipped)" if skipped else ""), {
-        "subdomain_id": subdomain_id, "subdomain": subdomain.name, "targets": len(live_targets),
-        "skipped": skipped,
+    _emit_log(scan, "nuclei_start", f"Nuclei on {subdomain.name}: {target_count} targets", {
+        "subdomain_id": subdomain_id, "subdomain": subdomain.name, "targets": target_count,
     })
 
-    if not live_targets:
-        _emit_log(scan, "nuclei_done", f"Nuclei on {subdomain.name} done: no live HTTP targets", {
-            "subdomain_id": subdomain_id, "subdomain": subdomain.name, "findings": 0
-        })
-        return {"status": "done", "findings": 0, "subdomain": subdomain.name}
-
-    targets = live_targets
-    outfile = outdir / f"nuclei-sub-{subdomain_id}.json"
+    outdir = settings.RECON_BASE_DIR / scan.project.domain / scan.scan_date.strftime("%d-%m-%Y") / "nuclei"
+    outdir.mkdir(parents=True, exist_ok=True)
+    outfile = outdir / f"nuclei-sub-{subdomain_id}.txt"
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tf:
         tf.write("\n".join(targets))
         targets_file = tf.name
 
-    finding_output = []  # collect stdout lines
-
     try:
-        import subprocess
-        env = {}
-        for k, v in os.environ.items():
-            if not k.startswith(("GOPATH", "GOROOT", "GOMODCACHE", "GOCACHE")):
-                env[k] = v
-        env["HOME"] = "/root"
-        env["PATH"] = "/root/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:" + env.get("PATH", "")
-
-        proc = subprocess.Popen(
-            [str(nuclei_bin), "-l", targets_file, "-as", "-rl", "30", "-timeout", "10",
-             "-retries", "2", "-mhe", "1", "-j", "-o", str(outfile)],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, env=env,
+        # Same flags as nuclei.sh: -as -nh -rl 30 -timeout 15 -bs 5 -c 5
+        result = subprocess.run(
+            [str(nuclei_bin), "-l", targets_file, "-as", "-nh",
+             "-rl", "30", "-timeout", "15", "-bs", "5", "-c", "5",
+             "-o", str(outfile)],
+            capture_output=True, text=True, timeout=600,
+            env={**os.environ,
+                 "HOME": "/root",
+                 "PATH": f"/root/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:{os.environ.get('PATH','')}"},
         )
-        for line in proc.stdout:
+        # Log nuclei stdout (the human-readable output)
+        for line in result.stdout.strip().split("\n"):
             line = line.strip()
             if line and "Skipped" not in line and "unresponsive" not in line:
-                finding_output.append(line)
                 _emit_log(scan, "nuclei_output", line, {
                     "subdomain_id": subdomain_id, "subdomain": subdomain.name,
                 })
-        proc.wait(timeout=300)
+        # Log stderr if any
+        if result.stderr.strip():
+            _emit_log(scan, "nuclei_output", result.stderr.strip()[:500], {
+                "subdomain_id": subdomain_id, "subdomain": subdomain.name,
+            })
     except subprocess.TimeoutExpired:
-        proc.kill()
         _emit_log(scan, "nuclei_done", f"Nuclei on {subdomain.name} timed out", {
             "subdomain_id": subdomain_id, "subdomain": subdomain.name, "findings": 0
         })
@@ -528,15 +478,11 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
     finally:
         Path(targets_file).unlink(missing_ok=True)
 
-    if not outfile.exists() or outfile.stat().st_size == 0:
-        _emit_log(scan, "nuclei_done", f"Nuclei on {subdomain.name} done: 0 findings", {
-            "subdomain_id": subdomain_id, "subdomain": subdomain.name, "findings": 0
-        })
-        return {"status": "done", "findings": 0, "subdomain": subdomain.name}
-
+    # Parse findings using the same parser as the full scan
     from .parsers import parse_nuclei
     raw = parse_nuclei(str(outfile))
     if raw:
+        NucleiFinding.objects.filter(scan=scan).delete()  # replace old with new
         NucleiFinding.objects.bulk_create(
             [NucleiFinding(scan=scan, **entry) for entry in raw], batch_size=500)
     finding_count = len(raw)
