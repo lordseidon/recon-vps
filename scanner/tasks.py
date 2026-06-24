@@ -438,7 +438,7 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
     try:
         result = subprocess.run(
             ["bash", str(scripts_dir / "nuclei.sh"), subdomain.name, "-p", port_str],
-            capture_output=True, text=True, timeout=600,
+            capture_output=True, text=True, timeout=1200,
             cwd=str(output_base),
             env={
                 "HOME": "/root",
