@@ -406,7 +406,7 @@ def run_org_asn_discovery(self, org_id):
     org.save()
 
 
-@shared_task(bind=True, time_limit=600)
+@shared_task(bind=True, time_limit=1800)
 def run_single_nuclei(self, scan_id, subdomain_id, ports):
     """Run nuclei on a single subdomain with its open ports."""
     import tempfile, json
