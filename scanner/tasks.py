@@ -458,7 +458,24 @@ def run_single_nuclei(self, scan_id, subdomain_id, ports):
         live_targets = targets_raw
 
     skipped = len(targets_raw) - len(live_targets)
-    _emit_log(scan, "nuclei_start", f"Nuclei started for {subdomain.name}: {len(live_targets)} live/{len(targets_raw)} targets" +
+
+    # Sort targets: largest port first
+    def _port_from_target(t):
+        try:
+            return int(t.rsplit(":", 1)[-1])
+        except ValueError:
+            return 0
+    live_targets = sorted(live_targets, key=_port_from_target, reverse=True)
+
+    # Log the scanned targets
+    target_list = ", ".join(live_targets[:20])
+    if len(live_targets) > 20:
+        target_list += f" ... +{len(live_targets) - 20} more"
+    _emit_log(scan, "nuclei_targets", target_list, {
+        "subdomain_id": subdomain_id, "subdomain": subdomain.name, "targets": len(live_targets),
+    })
+
+    _emit_log(scan, "nuclei_start", f"Nuclei on {subdomain.name}: {len(live_targets)} live/{len(targets_raw)} targets" +
               (f" ({skipped} non-HTTP skipped)" if skipped else ""), {
         "subdomain_id": subdomain_id, "subdomain": subdomain.name, "targets": len(live_targets),
         "skipped": skipped,

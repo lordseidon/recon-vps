@@ -564,7 +564,7 @@ class ScanViewSet(viewsets.ModelViewSet):
 
         log_filter = ScanLog.objects.filter(
             scan=scan,
-            category__in=["nuclei_start", "nuclei_done", "nuclei_output"],
+            category__in=["nuclei_start", "nuclei_targets", "nuclei_done", "nuclei_output"],
             data__subdomain_id=subdomain_id,
         )
         if since_id:
