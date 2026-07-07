@@ -1,0 +1,91 @@
+{% extends "scanner/base.html" %}
+
+{% block title %}Login — ReconVue{% endblock %}
+
+{% block extra_head %}
+<style>
+.login-wrapper {
+    min-height: 80vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.login-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 40px;
+    width: 100%;
+    max-width: 420px;
+}
+.login-card h2 {
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+.login-card .subtitle {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-bottom: 28px;
+}
+.form-control {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 10px 14px;
+    border-radius: 8px;
+}
+.form-control:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+.btn-login {
+    width: 100%;
+    padding: 10px;
+    font-weight: 600;
+    border-radius: 8px;
+    background: var(--accent);
+    border: none;
+    color: #fff;
+}
+.btn-login:hover {
+    background: #4f46e5;
+}
+.error-msg {
+    background: rgba(248,81,73,0.1);
+    border: 1px solid rgba(248,81,73,0.3);
+    color: #f85149;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="login-wrapper">
+    <div class="login-card">
+        <h2><i class="bi bi-shield-lock me-2"></i>ReconVue</h2>
+        <p class="subtitle">Sign in to continue</p>
+
+        {% if form.errors %}
+        <div class="error-msg">
+            Invalid username or password. Try again.
+        </div>
+        {% endif %}
+
+        <form method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label small text-muted">Username</label>
+                <input type="text" name="username" class="form-control" placeholder="Enter username" required autofocus>
+            </div>
+            <div class="mb-4">
+                <label class="form-label small text-muted">Password</label>
+                <input type="password" name="password" class="form-control" placeholder="Enter password" required>
+            </div>
+            <button type="submit" class="btn btn-login">Sign In</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
