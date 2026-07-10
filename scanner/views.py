@@ -705,7 +705,10 @@ def org_live_feed(request, org_id):
         since_id = int(since)
     except ValueError:
         since_id = 0
-    logs = ScanLog.objects.filter(scan__isnull=True, id__gt=since_id).order_by("id")[:200]
+    logs = ScanLog.objects.filter(
+        scan__isnull=True, id__gt=since_id,
+        message__startswith=f"[{org.name}]",
+    ).order_by("id")[:200]
     return JsonResponse({
         "status": org.asn_status,
         "cidr_count": org.asn_cidr_count,
