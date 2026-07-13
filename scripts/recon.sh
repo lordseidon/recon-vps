@@ -139,10 +139,14 @@ ALTDNS_WORDS="/opt/wordlists/altdns-words.txt"
 echo ""
 echo "[2c/6] Subdomain permutation discovery..."
 
+# Resolve tool binaries (prefer PATH, fall back to $GOBIN / ~/.local/bin)
+ALTERX_BIN="$(command -v alterx || true)"; [ -z "$ALTERX_BIN" ] && [ -x "$GOBIN/alterx" ] && ALTERX_BIN="$GOBIN/alterx"
+ALTDNS_BIN="$(command -v altdns || true)"; [ -z "$ALTDNS_BIN" ] && [ -x "$HOME/.local/bin/altdns" ] && ALTDNS_BIN="$HOME/.local/bin/altdns"
+
 # Auto-detect permutation tool if not forced
 if [ -z "$PERM_TOOL" ]; then
-    if command -v alterx &>/dev/null; then PERM_TOOL="alterx"
-    elif command -v altdns &>/dev/null; then PERM_TOOL="altdns"
+    if [ -n "$ALTERX_BIN" ]; then PERM_TOOL="alterx"
+    elif [ -n "$ALTDNS_BIN" ]; then PERM_TOOL="altdns"
     else PERM_TOOL="skip"; fi
 fi
 
@@ -156,12 +160,12 @@ grep -oP '^[a-zA-Z0-9.-]+\.'"$DOMAIN"'$' "$OUTDIR/all-subdomains.txt" \
     | sort -u > "$PERM_INPUT" 2>/dev/null || true
 INPUT_COUNT=$(wc -l < "$PERM_INPUT" 2>/dev/null || echo 0)
 
-if [ "$PERM_TOOL" = "alterx" ] && command -v alterx &>/dev/null; then
+if [ "$PERM_TOOL" = "alterx" ] && [ -n "$ALTERX_BIN" ]; then
     echo "  Engine: alterx | input subs: ${INPUT_COUNT}"
-    alterx -l "$PERM_INPUT" -silent -o "$PERM_LIST" 2>/dev/null || true
-elif [ "$PERM_TOOL" = "altdns" ] && command -v altdns &>/dev/null && [ -f "$ALTDNS_WORDS" ]; then
+    "$ALTERX_BIN" -l "$PERM_INPUT" -silent -o "$PERM_LIST" 2>/dev/null || true
+elif [ "$PERM_TOOL" = "altdns" ] && [ -n "$ALTDNS_BIN" ] && [ -f "$ALTDNS_WORDS" ]; then
     echo "  Engine: altdns | input subs: ${INPUT_COUNT} | wordlist: $(wc -l < "$ALTDNS_WORDS")"
-    altdns -i "$PERM_INPUT" -w "$ALTDNS_WORDS" -o "$PERM_LIST" 2>/dev/null || true
+    "$ALTDNS_BIN" -i "$PERM_INPUT" -w "$ALTDNS_WORDS" -o "$PERM_LIST" 2>/dev/null || true
 else
     echo "  No permutation engine available ($PERM_TOOL), skipping"
     PERM_TOOL="skip"
