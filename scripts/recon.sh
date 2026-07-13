@@ -162,7 +162,8 @@ INPUT_COUNT=$(wc -l < "$PERM_INPUT" 2>/dev/null || echo 0)
 
 if [ "$PERM_TOOL" = "alterx" ] && [ -n "$ALTERX_BIN" ]; then
     echo "  Engine: alterx | input subs: ${INPUT_COUNT}"
-    "$ALTERX_BIN" -l "$PERM_INPUT" -silent -o "$PERM_LIST" 2>/dev/null || true
+    # alterx reads seeds from stdin (the -l flag is unreliable)
+    "$ALTERX_BIN" -silent < "$PERM_INPUT" > "$PERM_LIST" 2>/dev/null || true
 elif [ "$PERM_TOOL" = "altdns" ] && [ -n "$ALTDNS_BIN" ] && [ -f "$ALTDNS_WORDS" ]; then
     echo "  Engine: altdns | input subs: ${INPUT_COUNT} | wordlist: $(wc -l < "$ALTDNS_WORDS")"
     "$ALTDNS_BIN" -i "$PERM_INPUT" -w "$ALTDNS_WORDS" -o "$PERM_LIST" 2>/dev/null || true
