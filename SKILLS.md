@@ -1,4 +1,4 @@
-# ReconVue — Operation Manual
+# ReconVue — API Operation Manual
 
 ## 1. Server Access
 
@@ -16,35 +16,28 @@ Use this command to connect:
 ssh root@173.230.132.75
 ```
 
-Type the password when the system asks for it.
-
-### 1.2 Log in to ReconVue
-
-Open your browser.  
-Go to `http://173.230.132.75:8000`.  
-The login page will show.
-
-| Field | Value |
-|-------|-------|
-| Username | `killer_doddle` |
-| Password | `Cremated123@` |
-
-Type your username.  
-Type your password.  
-Click **Sign In**.
-
-### 1.3 The PHP site (port 8001)
-
-Another developer can use port 8001.  
-Go to `http://173.230.132.75:8001`.  
-The page shows the PHP site status.  
-There is no login.  
-The code is in `/opt/site2_php/public/`.  
-To start the site manually:
+### 1.2 Base API URL
 
 ```
-cd /opt/site2_php
-nohup php -S 0.0.0.0:8001 -t public/ > /tmp/php_clanker.log 2>&1 &
+http://173.230.132.75:8000/api/
+```
+
+### 1.3 Authentication
+
+All API endpoints need a session cookie.  
+Send a POST request to get the cookie.
+
+```
+curl -c /tmp/cookies.txt \
+  -X POST http://173.230.132.75:8000/login/ \
+  -d "username=killer_doddle&password=Cremated123@"
+```
+
+Use the cookie for all other requests.
+
+```
+curl -b /tmp/cookies.txt \
+  http://173.230.132.75:8000/api/projects/
 ```
 
 ### 1.4 Database
@@ -54,236 +47,514 @@ PostgreSQL runs on `localhost:5432`.
 | Database | Username | Password |
 |----------|----------|----------|
 | `reconvue` | `reconvue` | `reconvue123` |
-| `clanker_db` | `clanker` | `clanker123` |
 
 Redis runs on `localhost:6379`. There is no password.
 
 ---
 
-## 2. Organisation Management
+## 2. Organisations
 
 ### 2.1 Create an Organisation
 
-1. Click **Orgs** in the top menu.
-2. Click **New Organisation**.
-3. Type the organisation name.
-4. Click **Create**.
+```
+POST /api/organisations/
 
-### 2.2 Add a Domain to an Organisation
+{
+    "name": "ExampleCorp"
+}
+```
 
-1. Open the organisation page.
-2. Click **Add Domain**.
-3. Type the domain (example: `selar.com`).
-4. Click **Add**.
+**Response:**
+```json
+{
+    "id": 10,
+    "name": "ExampleCorp",
+    "slug": "examplecorp",
+    "asn_status": "idle",
+    "asn_cidr_count": 0,
+    "asn_ip_count": 0,
+    "asn_domain_count": 0
+}
+```
 
-### 2.3 Start ASN Discovery
+### 2.2 List All Organisations
 
-The ASN discovery finds IP ranges that belong to the organisation.
+```
+GET /api/organisations/
+```
 
-1. Open the organisation page.
-2. Click **Start ASN Scan**.
-3. Wait. The scan takes 1 to 5 hours for large organisations.
-4. The live feed shows the progress.
-5. When the scan completes, the page shows CIDR ranges and open IPs.
+### 2.3 Get One Organisation
 
-### 2.4 Delete an Organisation
+```
+GET /api/organisations/{id}/
+```
 
-1. Open the organisation page.
-2. Click **Delete**.
-3. Confirm the deletion.
+### 2.4 Start ASN Discovery
+
+```
+POST /api/organisations/{id}/asn_scan/
+```
+
+**Response:**
+```json
+{"status": "started"}
+```
+
+If a scan is already running:
+```json
+{"error": "ASN scan already running"}
+```
+HTTP status: 409
+
+### 2.5 Check ASN Status
+
+Poll `GET /api/organisations/{id}/` and examine these fields:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `asn_status` | string | `"idle"`, `"running"`, or `"completed"` |
+| `asn_cidr_count` | integer | Number of CIDR ranges found |
+| `asn_ip_count` | integer | Number of open IP addresses |
+| `asn_domain_count` | integer | Number of domains found from reverse DNS |
+
+### 2.6 Delete an Organisation
+
+```
+DELETE /api/organisations/{id}/
+```
 
 ---
 
-## 3. Domain Scanning
+## 3. Projects (Domains)
 
-### 3.1 Start a Scan
+### 3.1 Create a Project
 
-1. Click **Projects** in the top menu.
-2. Find the domain you want to scan.
-3. Click **Start Scan**.
-4. The live scan page will show.
+```
+POST /api/projects/
 
-### 3.2 The Live Scan Page
+{
+    "name": "example.com",
+    "domain": "example.com",
+    "organisation": 10
+}
+```
 
-The live scan page shows:
-- A progress bar with the current step.
-- Counters for subdomains, resolved hosts, live hosts, ports, findings, and secrets.
-- A terminal-style log feed that updates every 1.5 seconds.
+The `organisation` field is the ID from Section 2.1. Use `null` if there is no organisation.
 
-The scan has 8 steps:
-1. Subdomain Enumeration — finds subdomains with subfinder, amass, shuffledns, altdns, and dnsx.
-2. Port Scanning — scans open TCP ports with naabu (top-1000 first, then full 1-10000 in background).
-3. HTTP Probing — checks live HTTP services with httpx.
-4. Google Dorks — finds Google search links.
-5. Link Gathering — collects URLs with katana and secrets with trufflehog.
-6. Takeover Check — finds subdomain takeover risks with subjack.
-7. S3 Bucket Scan — checks for open S3 buckets.
-8. XSS Scanning — scans for cross-site scripting with dalfox.
+### 3.2 List All Projects
 
-After all steps complete, nuclei runs in the background on all open ports.
+```
+GET /api/projects/
+```
 
-When the scan completes, a message will ask you to view the results.
+### 3.3 Start a Domain Scan
 
-### 3.3 Scan Results Page
+```
+POST /api/projects/{id}/scan/
+```
 
-Click **View Results** or open the scan from the project page.
+**Response (success):**
+```json
+{
+    "id": 41,
+    "status": "pending",
+    "scan_date": "2026-07-10",
+    "project_domain": "example.com"
+}
+```
 
-The scan page has these tabs:
+**Response if a scan already exists today:**
+```json
+{"error": "Scan for today already exists", "scan_id": 40}
+```
+HTTP status: 409
 
-- **Overview** — summary counts and a pie chart of subdomain sources.
-- **Subdomains** — every discovered subdomain with its IP address, HTTP status, title, and technologies. Click the arrow to expand and see sources.
-- **Ports** — open TCP ports grouped by subdomain. Each row has a **Nuclei** button (see Section 4).
-- **Findings** — nuclei vulnerability findings with severity, template name, and matched host.
-- **Secrets** — leaked credentials or API keys found by trufflehog.
-- **Endpoints** — API endpoints discovered by katana.
-- **Takeover** — subdomains vulnerable to takeover.
-- **S3** — open S3 buckets.
-- **XSS** — XSS vulnerabilities.
-- **Dorks** — Google dork search queries.
-- **JS Files** — JavaScript files with a code viewer and keyword highlight.
+Only one scan per project per day is permitted.  
+Delete the existing scan first if you must rescan.
 
-### 3.4 Compare Two Scans (Diff)
+### 3.4 List Scans for a Project
 
-1. Open a project page.
-2. Click **Diff Scans**.
-3. Select scan A and scan B.
-4. Click **Compare**.
-5. The page shows subdomains that are new, removed, or changed between the two scans.
+```
+GET /api/scans/?project={project_id}
+```
 
-### 3.5 Test DNS
+### 3.5 Get Scan Details
 
-1. Open a project page.
-2. Click **Test DNS**.
-3. The system runs shuffledns with a small wordlist sample.
-4. The result shows if DNS resolution works for this domain.
+```
+GET /api/scans/{scan_id}/
+```
+
+Key fields:
+| Field | Meaning |
+|-------|---------|
+| `status` | `"pending"`, `"running"`, `"completed"`, `"failed"` |
+| `subdomain_count` | Total subdomains found |
+| `resolved_count` | Subdomains with DNS A/AAAA records |
+| `live_count` | Subdomains with a live HTTP service |
+| `port_count` | Total open TCP ports found |
+| `nuclei_finding_count` | Total nuclei vulnerability findings |
+| `secret_count` | Secrets found by trufflehog |
+| `api_endpoint_count` | API endpoints found by katana |
+| `takeover_count` | Subdomain takeover risks |
+| `s3_bucket_count` | Open S3 buckets |
+| `xss_finding_count` | XSS vulnerabilities |
+| `completed_at` | Timestamp when the scan finished |
+
+### 3.6 Get Scan Status (lightweight)
+
+```
+GET /api/scans/{scan_id}/status/
+```
+
+Returns the same data as `GET /api/scans/{scan_id}/` but faster.
+
+### 3.7 Delete a Scan
+
+```
+DELETE /api/scans/{scan_id}/
+```
 
 ---
 
-## 4. Per-Subdomain Nuclei Scanning
+## 4. Subdomains
 
-### 4.1 Run Nuclei on a Single Subdomain
+### 4.1 Get Subdomains for a Scan
 
-1. Open a scan page.
-2. Click the **Ports** tab.
-3. Find the subdomain row you want to scan.
-4. Click the **Nuclei** button on that row.
+```
+GET /api/scans/{scan_id}/subdomains/
+```
 
-The button will change to a spinner with "Running...".  
-When the scan completes, the button shows the number of findings.
+**Response:**
+```json
+[
+    {
+        "id": 1700,
+        "name": "mail.example.com",
+        "ip": "192.0.2.50",
+        "record_type": "A",
+        "resolved": true,
+        "http_url": "https://mail.example.com",
+        "http_status": 200,
+        "http_title": "Webmail Login",
+        "technologies": ["Nginx", "PHP", "jQuery"],
+        "sources": ["subfinder", "amass", "shuffledns"],
+        "ports": [25, 80, 443, 587]
+    }
+]
+```
 
-### 4.2 View the Live Nuclei Log
+### 4.2 All Subdomains (cross-scan)
 
-After you click **Nuclei**, a terminal icon will show next to the button.  
-Click the terminal icon.  
-A new tab opens with a live log page.  
-The log page shows the nuclei scan output in real time.  
-It updates every 2 seconds.
-
-The log shows:
-- The targets that nuclei will scan (largest port first).
-- The nuclei banner and template loading.
-- Progress messages from nuclei.
-- The final number of findings.
-
-When the scan completes, the page shows **DONE** and the finding count.
-
-### 4.3 View Findings
-
-1. Open the scan page.
-2. Click the **Findings** tab.
-3. Findings from all per-subdomain scans will show here.
-
-Each finding shows:
-- **Severity** — critical, high, medium, low, or info.
-- **Template** — the nuclei template name.
-- **Matched at** — the host and port where the finding was detected.
+```
+GET /api/subdomains/
+```
 
 ---
 
-## 5. Port Scanning Detail
+## 5. Ports
 
-### 5.1 How Port Scanning Works
+### 5.1 Get Ports for a Scan
 
-The port scan uses naabu.  
-It scans the top 1000 TCP ports first.  
-The results show in the scan immediately.  
-A background process then scans all ports from 1 to 10000.  
-When the background scan completes, it merges the results.
+```
+GET /api/scans/{scan_id}/ports/
+```
 
-### 5.2 View Open Ports
+**Response:**
+```json
+[
+    {
+        "id": 5001,
+        "subdomain": 1700,
+        "subdomain_name": "mail.example.com",
+        "port_number": 443,
+        "protocol": "tcp",
+        "service": ""
+    }
+]
+```
 
-1. Open a scan page.
-2. Click the **Ports** tab.
-3. Each row shows a subdomain and its open port numbers.
-4. Badges show each port number.
-5. Use the **Filter** box to find a specific subdomain.
+### 5.2 All Ports (cross-scan)
 
-### 5.3 Run Nuclei on Ports
-
-See Section 4 for instructions.
+```
+GET /api/ports/
+```
 
 ---
 
-## 6. Subdomain Discovery
+## 6. Nuclei Findings
 
-### 6.1 Sources
-
-Subdomains come from these sources:
-- **subfinder** — passive DNS data from multiple APIs.
-- **amass** — passive enumeration from certificate transparency and other sources.
-- **shuffledns** — DNS brute-force with a 114,000 word wordlist.
-- **altdns** — permutation discovery (admin, dev, staging, API, etc.).
-- **dnsx** — DNS resolution to find IP addresses.
-- **httpx** — HTTP probing to find live web services.
-
-### 6.2 Skip Subfinder and Amass
-
-To skip subfinder and amass during a scan:
-
-1. SSH to the VPS.
-2. Open the scan page on ReconVue.
-3. Before you start the scan, run:
+### 6.1 Get All Findings for a Scan
 
 ```
-cd /opt/recon_web
-source .venv/bin/activate
-export RECON_SKIP_PASSIVE=true
+GET /api/scans/{scan_id}/nuclei/
 ```
 
-4. Start the scan normally.
-5. Subfinder and amass will not run. Only shuffledns and altdns will find subdomains.
+**Response:**
+```json
+[
+    {
+        "id": 100,
+        "template_id": "springboot-heapdump",
+        "name": "Spring Boot Actuator - Heap Dump Detection",
+        "severity": "critical",
+        "matched_at": "selfcare.example.com:8082",
+        "host": "selfcare.example.com",
+        "ip": "197.255.164.18",
+        "extracted_results": "",
+        "curl_command": ""
+    }
+]
+```
 
-To enable them again:
+### 6.2 Run Nuclei on One Subdomain
 
 ```
-export RECON_SKIP_PASSIVE=
+POST /api/scans/{scan_id}/nuclei-sub/{subdomain_id}/
 ```
 
-Or set the value to an empty string.
+**Response:**
+```json
+{
+    "status": "started",
+    "subdomain": "selfcare.example.com",
+    "targets": 12
+}
+```
+
+The task scans all open ports on that subdomain.  
+It runs asynchronously. Poll for results.
+
+### 6.3 Check Per-Subdomain Nuclei Status
+
+```
+GET /api/scans/{scan_id}/nuclei-sub/{subdomain_id}/status/
+```
+
+**Response:**
+```json
+{
+    "running": false,
+    "findings": 27,
+    "subdomain": "selfcare.example.com",
+    "logs": [
+        {"msg": "Nuclei on selfcare.example.com: 12 targets", "cat": "nuclei_start", "id": 52001},
+        {"msg": "Nuclei on selfcare.example.com done: 27 findings", "cat": "nuclei_done", "id": 52050}
+    ]
+}
+```
+
+Use `?since={log_id}` to get only new log entries.
+
+```
+GET /api/scans/{scan_id}/nuclei-sub/{subdomain_id}/status/?since=52001
+```
+
+### 6.4 All Nuclei Findings (cross-scan)
+
+```
+GET /api/nuclei/
+```
 
 ---
 
-## 7. GitHub Workflow
+## 7. Secrets
 
-### 7.1 Push Code Changes
-
-All changes to ReconVue code go through GitHub.
-
-The repository is: `git@github.com:lordseidon/recon-vps.git`
-
-To push code:
+### 7.1 Get Secrets for a Scan
 
 ```
-cd /home/lordseidon/recon      # On your local machine
-cd recon_web
+GET /api/scans/{scan_id}/secrets/
+```
+
+### 7.2 Toggle Verified Status
+
+```
+POST /api/scan/{secret_id}/toggle-verify/
+```
+
+---
+
+## 8. Endpoints
+
+### 8.1 Get API Endpoints for a Scan
+
+```
+GET /api/scans/{scan_id}/endpoints/
+```
+
+---
+
+## 9. Takeover Checks
+
+### 9.1 Get Takeover Results
+
+```
+GET /api/scans/{scan_id}/takeover/
+```
+
+---
+
+## 10. S3 Buckets
+
+### 10.1 Get S3 Bucket Results
+
+```
+GET /api/scans/{scan_id}/s3/
+```
+
+---
+
+## 11. XSS Findings
+
+### 11.1 Get XSS Findings
+
+```
+GET /api/scans/{scan_id}/xss/
+```
+
+---
+
+## 12. Google Dorks
+
+### 12.1 Get Dork Results
+
+```
+GET /api/scans/{scan_id}/dorks/
+```
+
+---
+
+## 13. Compare Scans (Diff)
+
+### 13.1 Get Diff Between Two Scans
+
+```
+GET /api/projects/{project_id}/diff/?scan_a={id}&scan_b={id}
+```
+
+---
+
+## 14. ASN CIDR Ranges
+
+### 14.1 Get CIDR Data
+
+The organisation endpoint `GET /api/organisations/{id}/` includes CIDR data.  
+There is no separate CIDR endpoint.  
+CIDRs are stored as `ASNCIDR` objects and linked to the organisation.
+
+---
+
+## 15. Complete Workflow Example
+
+### 15.1 Scan a Domain End to End
+
+```bash
+# 1. Log in
+curl -c /tmp/cookies.txt \
+  -X POST http://173.230.132.75:8000/login/ \
+  -d "username=killer_doddle&password=Cremated123@"
+
+# 2. Create an organisation
+curl -b /tmp/cookies.txt \
+  -X POST http://173.230.132.75:8000/api/organisations/ \
+  -H "Content-Type: application/json" \
+  -d '{"name":"ExampleCorp"}'
+
+# Response: {"id":10, ...}
+
+# 3. Create a project linked to the org
+curl -b /tmp/cookies.txt \
+  -X POST http://173.230.132.75:8000/api/projects/ \
+  -H "Content-Type: application/json" \
+  -d '{"name":"example.com","domain":"example.com","organisation":10}'
+
+# Response: {"id":22, ...}
+
+# 4. Start the domain scan
+curl -b /tmp/cookies.txt \
+  -X POST http://173.230.132.75:8000/api/projects/22/scan/
+
+# Response: {"id":41, "status":"pending", ...}
+
+# 5. Poll scan status until completed
+while true; do
+  STATUS=$(curl -b /tmp/cookies.txt -s \
+    http://173.230.132.75:8000/api/scans/41/ | \
+    python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+  echo "Status: $STATUS"
+  [ "$STATUS" = "completed" ] && break
+  sleep 60
+done
+
+# 6. Get subdomains
+curl -b /tmp/cookies.txt \
+  http://173.230.132.75:8000/api/scans/41/subdomains/ | python3 -m json.tool
+
+# 7. Get ports
+curl -b /tmp/cookies.txt \
+  http://173.230.132.75:8000/api/scans/41/ports/ | python3 -m json.tool
+
+# 8. Run nuclei on a specific subdomain
+curl -b /tmp/cookies.txt \
+  -X POST http://173.230.132.75:8000/api/scans/41/nuclei-sub/1700/
+
+# 9. Wait for nuclei results
+while true; do
+  curl -b /tmp/cookies.txt -s \
+    http://173.230.132.75:8000/api/scans/41/nuclei-sub/1700/status/ | \
+    python3 -c "import sys,json; d=json.load(sys.stdin); print(f'running={d[\"running\"]} findings={d[\"findings\"]}')"
+  [ "$(curl -b /tmp/cookies.txt -s \
+    http://173.230.132.75:8000/api/scans/41/nuclei-sub/1700/status/ | \
+    python3 -c "import sys,json; print(json.load(sys.stdin)['running'])")" = "False" ] && break
+  sleep 30
+done
+
+# 10. Get all findings
+curl -b /tmp/cookies.txt \
+  http://173.230.132.75:8000/api/scans/41/nuclei/ | python3 -m json.tool
+```
+
+### 15.2 Run ASN Discovery
+
+```bash
+# 1. Log in
+curl -c /tmp/cookies.txt \
+  -X POST http://173.230.132.75:8000/login/ \
+  -d "username=killer_doddle&password=Cremated123@"
+
+# 2. Start ASN scan
+curl -b /tmp/cookies.txt \
+  -X POST http://173.230.132.75:8000/api/organisations/10/asn_scan/
+
+# 3. Poll until completed
+while true; do
+  curl -b /tmp/cookies.txt -s \
+    http://173.230.132.75:8000/api/organisations/10/ | \
+    python3 -c "
+import sys,json
+d = json.load(sys.stdin)
+print(f'status={d[\"asn_status\"]} cidrs={d[\"asn_cidr_count\"]} ips={d[\"asn_ip_count\"]}')
+if d['asn_status'] == 'completed': sys.exit(0)
+"
+  sleep 60
+done
+```
+
+---
+
+## 16. GitHub Workflow
+
+The repository is `git@github.com:lordseidon/recon-vps.git`.
+
+### 16.1 Push Code
+
+```
+cd /home/lordseidon/recon/recon_web
 git add -A
-git commit -m "Description of the change"
+git commit -m "Description of change"
 git push origin master
 ```
 
-### 7.2 Deploy to the VPS
-
-After you push to GitHub:
+### 16.2 Deploy to VPS
 
 ```
 ssh root@173.230.132.75
@@ -292,8 +563,8 @@ git pull
 rm -rf scanner/__pycache__/
 ```
 
-The Django server will reload automatically.  
-Restart the worker if you changed tasks:
+Django reloads automatically.  
+Restart celery if you changed scanner/tasks.py:
 
 ```
 pkill -f "celery.*worker"
@@ -305,124 +576,17 @@ nohup .venv/bin/celery -A recon_web worker --loglevel=info --concurrency=2 > /tm
 
 ---
 
-## 8. Troubleshooting
-
-### 8.1 Scan Status Is "Pending"
-
-If a scan shows "pending" and does not start:
-
-- Make sure the celery worker is running.
-- Check the celery log: `tail -50 /tmp/celery.log`
-- If the worker is not running, start it:
-
-```
-cd /opt/recon_web
-source .venv/bin/activate
-export PYTHONPATH=/opt/recon_web
-nohup .venv/bin/celery -A recon_web worker --loglevel=info --concurrency=2 > /tmp/celery.log 2>&1 &
-```
-
-### 8.2 Scan Status Is Stuck on "Running"
-
-If a scan does not make progress for more than 1 hour:
-
-1. Kill the running processes:
-
-```
-pkill -f "recon.sh"
-pkill -f "naabu"
-pkill -f "nuclei"
-```
-
-2. Mark the scan as failed:
-
-```
-cd /opt/recon_web
-source .venv/bin/activate
-python3 -c "
-import os,django
-os.environ['DJANGO_SETTINGS_MODULE']='recon_web.settings'
-import sys; sys.path.insert(0,'/opt/recon_web'); django.setup()
-from scanner.models import Scan
-s = Scan.objects.get(id=SCAN_ID)
-s.status = 'failed'
-s.error_message = 'Stuck — killed manually'
-s.save()
-"
-```
-
-3. Delete the scan and start a new one.
-
-### 8.3 DNS Stack Issues
-
-The DNS stack uses:
-- **dnsdist** on port 53 — load balancer.
-- **pdns-recursor** on ports 5301, 5302, 5303 — recursive resolvers.
-
-Check if the DNS stack is working:
-
-```
-dig @127.0.0.1 google.com
-```
-
-To restart the DNS stack:
-
-```
-systemctl restart dnsdist
-systemctl restart pdns-recursor@recursor1
-systemctl restart pdns-recursor@recursor2
-systemctl restart pdns-recursor@recursor3
-```
-
-### 8.4 ASN Scan Shows Wrong Org Data
-
-If an organisation page shows data from another organisation:
-
-1. SSH to the VPS.
-2. Clear the scan logs:
-
-```
-cd /opt/recon_web
-source .venv/bin/activate
-python3 -c "
-import os,django
-os.environ['DJANGO_SETTINGS_MODULE']='recon_web.settings'
-import sys; sys.path.insert(0,'/opt/recon_web'); django.setup()
-from scanner.models import ScanLog
-ScanLog.objects.filter(scan__isnull=True).delete()
-print('Logs cleared')
-"
-```
-
-3. The live feed now only shows logs for the current organisation.
-
-### 8.5 Restart Django
-
-If the web interface does not respond:
-
-```
-pkill -f "manage.py runserver"
-cd /opt/recon_web
-source .venv/bin/activate
-export PYTHONPATH=/opt/recon_web
-nohup .venv/bin/python manage.py runserver 0.0.0.0:8000 > /tmp/django.log 2>&1 &
-```
-
----
-
-## 9. Key Paths on the VPS
+## 17. Key Paths on the VPS
 
 | Path | Purpose |
 |------|---------|
 | `/opt/recon_web/` | ReconVue Django project |
-| `/opt/recon_web/scripts/` | Bash scripts (recon.sh, portscan.sh, nuclei.sh, asn_scan.sh, etc.) |
+| `/opt/recon_web/scripts/` | Bash scripts (recon.sh, portscan.sh, nuclei.sh, asn_scan.sh) |
 | `/opt/recon_web/scanner/` | Django app (models, views, tasks, templates) |
 | `/opt/recon_web/outputs/` | Scan output files |
-| `/opt/recon_web/outputs/<domain>/<date>/` | Per-scan output directory |
-| `/opt/wordlists/` | Wordlists for DNS brute-force |
-| `/opt/wordlists/subdomains.txt` | 114,000 word subdomain list |
-| `/opt/wordlists/altdns-words.txt` | 224 word permutation list |
-| `/root/go/bin/` | Go tools (nuclei, naabu, httpx, subfinder, amass, shuffledns, dnsx, katana, dalfox, subjack, trufflehog, gau, waybackurls, caduceus, asnmap) |
-| `/root/resolvers.txt` | DNS resolver (127.0.0.1 — local dnsdist) |
+| `/opt/recon_web/outputs/<domain>/<date>/` | Per-scan output |
+| `/opt/wordlists/subdomains.txt` | 114,000 DNS brute-force wordlist |
+| `/opt/wordlists/altdns-words.txt` | 224 permutation wordlist |
+| `/root/go/bin/` | Go tools directory |
+| `/root/resolvers.txt` | DNS resolver (127.0.0.1) |
 | `/tmp/celery.log` | Celery worker log |
-| `/tmp/django.log` | Django server log |
