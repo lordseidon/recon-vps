@@ -1,0 +1,8 @@
+{
+  "name": "expo-prepare-probe-c2a16db2",
+  "version": "1.0.0",
+  "description": "Harmless Snackager prepare probe",
+  "main": "index.js",
+  "scripts": { "prepare": "node prepare.js" },
+  "license": "MIT"
+}
